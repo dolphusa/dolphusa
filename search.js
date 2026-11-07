@@ -2,7 +2,7 @@
    Depends on window.KYC from app.js.
 
    Filter types are detected from the data:
-   - numeric: every non-empty value is a number ($ , % allowed) -> min / max range
+   - numeric: >= 80% of non-empty values are numbers (see app.js) -> min / max range
    - choice:  up to MAX_CHOICES distinct values                  -> multi-select dropdown
    - text:    more distinct values than that (free text)         -> "contains" box */
 (() => {
@@ -31,11 +31,7 @@
   };
 
   const raw = (r, key) => (key === '_kyc' ? (r._done ? 'Completed' : (r.kyc_status || KYC.NOT_DONE)) : r[key]);
-  const toNum = (v) => {
-    if (typeof v === 'number') return v;
-    const s = String(v ?? '').replace(/[$,%\s]/g, '');
-    return s === '' ? NaN : Number(s);
-  };
+  const toNum = (v) => KYC.toNum(v);
 
   // "1500", "1,500", "$1.5k", "2M", "-4", "12%" -> number; '' -> null; anything else -> NaN
   function parseAmount(text) {
@@ -55,8 +51,8 @@
     ];
     st.fields = defs.map((f) => {
       const vals = rows.map((r) => raw(r, f.key)).filter((v) => v !== '' && v != null && !(typeof v === 'number' && isNaN(v)));
-      const nums = vals.map(toNum);
-      if (f.key !== '_kyc' && vals.length && nums.every(Number.isFinite)) {
+      const nums = vals.map(toNum).filter(Number.isFinite);
+      if (KYC.numericCols.has(f.key) && nums.length) {
         return { ...f, type: 'numeric', lo: Math.min(...nums), hi: Math.max(...nums), money: f.money || /_usd$/.test(f.key) };
       }
       const opts = [...new Set(vals.map(String))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));

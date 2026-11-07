@@ -14,6 +14,7 @@
     </div>
     <nav class="tabs" aria-label="Dashboard tabs">
       <a href="#overview">Overview</a>
+      <a href="#followup">KYC follow-up</a>
       <a href="#search">Client search</a>
     </nav>
     <div class="topbar-actions">
@@ -53,6 +54,8 @@
           <p class="hint">Click a region and/or team to filter the chart. Click again to clear.</p>
         </div>
       </div>
+
+      <div class="fu-strip" id="fu-strip" aria-live="polite"></div>
     </section>
 
     <!-- Section 2: client lookup -->
@@ -75,6 +78,64 @@
               <th data-sort="annual_budget_usd" class="num">Budget</th>
               <th data-sort="kyc_status">KYC</th>
               <th data-sort="kyc_completed_date">Completed</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- Tab: KYC follow-up (clients needing KYC, KYC refresh, or data fixes) -->
+  <main id="tab-followup" class="tab-panel" hidden>
+    <section class="card" aria-labelledby="fu-title">
+      <div class="section-head">
+        <div>
+          <h2 id="fu-title">KYC follow-up</h2>
+          <p class="sub" id="fu-asof"></p>
+        </div>
+        <div class="head-actions fu-filters">
+          <label>Region<select id="fu-region"></select></label>
+          <label>Team<select id="fu-team"></select></label>
+          <label>Owner<select id="fu-owner"></select></label>
+        </div>
+      </div>
+      <div class="kpis fu-kpis" id="fu-kpis"></div>
+      <div class="fu-grid">
+        <div>
+          <h3>By account owner</h3>
+          <div class="table-scroll-x"><table class="bd-table" id="fu-owners"></table></div>
+        </div>
+        <div>
+          <h3>Data quality issues by type</h3>
+          <div class="table-scroll-x"><table class="bd-table" id="fu-rules"></table></div>
+        </div>
+      </div>
+      <p class="hint">Click a tile, owner or issue type to filter the list below. A client can need more than one action.</p>
+    </section>
+
+    <section class="card" aria-labelledby="fl-title">
+      <div class="section-head">
+        <div>
+          <h2 id="fl-title">Clients needing action</h2>
+          <div class="filter-chips" id="fu-chips" aria-live="polite"></div>
+        </div>
+        <div class="head-actions">
+          <input type="search" id="fu-search" placeholder="Search client or detail…" aria-label="Search list">
+          <button class="btn primary" id="fu-export" type="button">Export CSV</button>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table class="clients fu-list" id="fu-list">
+          <thead>
+            <tr>
+              <th data-sort="client_name">Client</th>
+              <th data-sort="account_owner">Owner</th>
+              <th data-sort="region">Region</th>
+              <th data-sort="team">Team</th>
+              <th data-sort="annual_budget_usd" class="num">Budget</th>
+              <th data-sort="_nActions">Action needed</th>
+              <th>Details</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -133,5 +194,6 @@
 
   <script src="app.js"></script>
   <script src="search.js"></script>
+  <script src="followup.js"></script>
 </body>
 </html>

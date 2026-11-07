@@ -16,7 +16,7 @@ It loads `data/clients.csv` on start. You can also click **Load CSV…** to open
 
 ## Tabs
 
-The dashboard has tabs in the header. Each tab's address is a link you can share or bookmark: `#overview` (main tab) and `#search`.
+The dashboard has tabs in the header. Each tab's address is a link you can share or bookmark: `#overview` (main tab), `#followup` and `#search`.
 To add a tab, add a `<main id="tab-NAME" class="tab-panel" hidden>` and a link `<a href="#NAME">` to `index.html`,
 then put its logic in its own script. Data and helpers are shared through `window.KYC` (see the end of `app.js`),
 and the `kyc:data` event fires whenever data is (re)loaded.
@@ -35,13 +35,38 @@ and the `kyc:data` event fires whenever data is (re)loaded.
 **2. Client lookup**: a searchable, sortable table (search covers names, owners and KYC answers).
 Click a client to see the budget and every KYC answer.
 
+The bottom of the KYC coverage card shows how many clients need follow-up, for the current region/team selection,
+with an **Open KYC follow-up →** button that carries that selection over.
+
+### KYC follow-up tab (`followup.js`)
+
+Shows who needs action and why. A client can fall into more than one group.
+
+| Group | Rule |
+|---|---|
+| **KYC not completed** | status is not "Completed…" (split into not started and in progress) |
+| **KYC refresh overdue** | last KYC completed more than **12 months** ago. The tile also shows how many fall due in the next 60 days |
+| **Data quality issues** | any of the checks below |
+
+Data quality checks: missing required field (ID, name, region, team, owner, budget); budget not a number or negative;
+blank KYC status; completed with no date, an invalid date, or a date in the future; a completion date set on a not-completed client;
+blank KYC answers on a completed client; text in a number question (e.g. "approx 500"); spelling variants
+that differ only by case or spacing (e.g. "Emea" vs "EMEA", where the most common spelling is assumed correct); duplicate IDs or names.
+
+- Tiles, the **by account owner** table and the **issues by type** table all filter the detailed list. The list also has
+  region, team and owner dropdowns plus a text search.
+- Each row shows badges (Needs KYC, Refresh, Data) and plain-English details of what to fix. Click a row for the client profile.
+- **Export CSV** downloads the list with yes/no flags and details, e.g. to send to each owner.
+- Filters are kept in the URL (`#followup?owner=J.%20Chen&cat=refresh`), so a link opens the same view.
+- Change `REFRESH_AFTER_MONTHS` / `DUE_SOON_DAYS` at the top of `followup.js` to adjust the rules.
+
 ### Client search tab (`search.js`)
 
 Filters are generated from the CSV, so new question columns appear automatically. Each column's filter type is detected from its values:
 
 | column values | filter |
 |---|---|
-| every answer is a number (`$`, `,`, `%` allowed) | **min – max** range. Accepts `1500`, `1.5k`, `2M`. Leaving a side empty means no limit, and clients with no answer are excluded once a range is set |
+| at least 80% of answers are numbers (`$`, `,`, `%` allowed; the rest are flagged on the follow-up tab) | **min – max** range. Accepts `1500`, `1.5k`, `2M`. Leaving a side empty means no limit, and clients with no answer are excluded once a range is set |
 | up to 40 distinct answers | **multi-select dropdown** with a count next to each answer, plus a find box for long lists |
 | more than 40 distinct answers (free text) | **"contains"** text box |
 

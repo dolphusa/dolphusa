@@ -28,6 +28,27 @@
   const prettyKey = (k) => k.replace(/^q_/, '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
     .replace(/\bUsd\b/g, '(USD)').replace(/\bPct\b/g, '(%)');
 
+  // "$1,500" -> 1500, "12%" -> 12, "" / "TBD" -> NaN
+  const toNum = (v) => {
+    if (typeof v === 'number') return v;
+    const s = String(v ?? '').replace(/[$,%\s]/g, '');
+    return s === '' ? NaN : Number(s);
+  };
+
+  // A column is numeric when at least 80% of its non-empty values are numbers. The threshold
+  // (rather than 100%) keeps one typo like "approx 500" from turning a number question into text;
+  // such values are reported on the KYC follow-up tab.
+  function detectNumericCols(rows, headers) {
+    const out = new Set();
+    for (const h of headers) {
+      if (!h.startsWith('q_') && h !== 'annual_budget_usd') continue;
+      const vals = rows.map((r) => r._raw[h]).filter((v) => v !== '' && v != null);
+      const n = vals.filter((v) => Number.isFinite(toNum(v))).length;
+      if (vals.length && n >= 5 && n / vals.length >= 0.8) out.add(h);
+    }
+    return out;
+  }
+
   // ---------- CSV ----------
   function parseCSV(text) {
     const out = []; let row = []; let f = ''; let q = false;
@@ -62,8 +83,9 @@
       ...r,
       region: r.region || 'Unassigned',
       team: r.team || 'Unassigned',
-      annual_budget_usd: Number(String(r.annual_budget_usd || '').replace(/[$,\s]/g, '')),
+      annual_budget_usd: toNum(r.annual_budget_usd),
       _done: !!done, _qKey: qKey, _qLabel: qLabel,
+      _raw: r, // values exactly as they appear in the sheet (used by data-quality checks)
     };
   }
 
@@ -109,6 +131,7 @@
     renderBreakdown('region', 'Region', '#bd-region');
     renderBreakdown('team', 'Team', '#bd-team');
     renderTable(rows);
+    document.dispatchEvent(new CustomEvent('kyc:overview', { detail: { rows, region: state.region, team: state.team } }));
   }
 
   function scopeLabel() {
@@ -316,16 +339,17 @@
 
   function load(text, source) {
     state.rows = parseCSV(text).map(normalize);
+    state.numericCols = detectNumericCols(state.rows, state.headers || []);
     state.region = state.team = state.slice = null;
     buildSliceDefs();
     $('#data-source').textContent = `${fmtInt(state.rows.length)} clients · source: ${source}`;
-    render();
-    document.dispatchEvent(new CustomEvent('kyc:data'));
+    document.dispatchEvent(new CustomEvent('kyc:data')); // other tabs prepare first...
+    render(); // ...so they can react to the overview's 'kyc:overview' event
   }
 
   // ---------- tabs (hash routing: #overview, #search) ----------
   function route() {
-    const tab = (location.hash.slice(1) || 'overview');
+    const tab = location.hash.slice(1).split('?')[0] || 'overview';
     const known = [...document.querySelectorAll('.tab-panel')].map((el) => el.id.replace('tab-', ''));
     const active = known.includes(tab) ? tab : 'overview';
     document.querySelectorAll('.tab-panel').forEach((el) => { el.hidden = el.id !== `tab-${active}`; });
@@ -342,7 +366,9 @@
   window.KYC = {
     get rows() { return state.rows; },
     get headers() { return state.headers || []; },
-    esc, fmtInt, fmtMoney, prettyKey, showDetail, NOT_DONE,
+    get numericCols() { return state.numericCols || new Set(); },
+    get overview() { return { region: state.region, team: state.team }; },
+    esc, fmtInt, fmtMoney, prettyKey, showDetail, toNum, NOT_DONE,
   };
 
   fetch('data/clients.csv')

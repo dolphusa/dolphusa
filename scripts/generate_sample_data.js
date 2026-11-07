@@ -33,7 +33,7 @@ const cols = ['client_id', 'client_name', 'region', 'team', 'account_owner', 'an
   'q_decision_maker', 'q_industry', 'q_preferred_contract', 'q_procurement_process', 'q_integration_needs',
   'q_data_residency', 'q_employee_count', 'q_years_in_business', 'q_number_of_locations', 'q_expected_users',
   'q_current_annual_spend_usd', 'q_satisfaction_current_provider', 'q_expected_growth_pct', 'notes'];
-const rows = [cols.join(',')];
+const data = [];
 const used = new Set();
 const start = Date.UTC(2025, 0, 1), end = Date.UTC(2026, 9, 31);
 for (let i = 1; i <= 220; i++) {
@@ -43,7 +43,7 @@ for (let i = 1; i <= 220; i++) {
   const done = rnd() < 0.68;
   const date = done ? new Date(start + rnd() * (end - start)).toISOString().slice(0, 10) : '';
   const budget = Math.round((pick([25, 50, 80, 120, 250, 400, 750, 1500]) * (0.7 + rnd() * 0.6))) * 1000;
-  rows.push([
+  data.push([
     `C${String(i).padStart(4, '0')}`, name, pick(regions), pick(teams), pick(owners), budget,
     done ? 'Completed' : pick(['Not started', 'In progress']), date,
     done ? pick(objectives) : '', done ? pick(timelines) : '', done ? pick(providers) : '',
@@ -53,6 +53,26 @@ for (let i = 1; i <= 220; i++) {
     done ? pick([int(10, 99), int(100, 999), int(1000, 20000)]) : '', done ? int(1, 60) : '', done ? int(1, 120) : '',
     done ? int(5, 5000) : '', done ? Math.round(budget * (0.3 + rnd())) : '', done ? int(1, 10) : '', done ? int(-5, 40) : '',
     '',
-  ].map(esc).join(','));
+  ]);
 }
-console.log(rows.join('\n'));
+
+// Seed a few realistic data-quality problems so the KYC follow-up tab has something to show.
+const col = (name) => cols.indexOf(name);
+const completed = data.filter((r) => r[col('kyc_status')] === 'Completed');
+const notDone = data.filter((r) => r[col('kyc_status')] !== 'Completed');
+data[6][col('account_owner')] = '';                         // missing owner
+data[18][col('annual_budget_usd')] = 'TBD';                 // budget not a number
+data[29][col('annual_budget_usd')] = '';                    // missing budget
+data[32][col('region')] = 'Emea';                           // inconsistent spelling
+data[47][col('team')] = 'mid-market';                       // inconsistent spelling
+completed[3][col('q_key_pain_point')] = '';                 // missing KYC answers
+completed[3][col('q_decision_maker')] = '';
+completed[9][col('q_industry')] = '';
+completed[14][col('q_employee_count')] = 'approx 500';      // text in a numeric question
+completed[21][col('kyc_completed_date')] = '';              // completed, no date
+completed[27][col('kyc_completed_date')] = '2027-02-14';    // date in the future
+notDone[5][col('kyc_completed_date')] = '2026-03-02';       // status/date mismatch
+data[150][col('client_name')] = data[12][col('client_name')]; // possible duplicate
+data[200][col('kyc_status')] = '';                          // blank status
+
+console.log([cols.join(','), ...data.map((r) => r.map(esc).join(','))].join('\n'));

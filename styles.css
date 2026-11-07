@@ -79,7 +79,7 @@ main { max-width: 1200px; margin: 0 auto; padding: 24px; display: grid; gap: 24p
 
 /* Search tab */
 .head-actions { display: flex; gap: 8px; align-items: center; }
-#s-keyword { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--page); color: var(--ink); width: 240px; max-width: 100%; }
+#s-keyword, #fu-search { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--page); color: var(--ink); width: 240px; max-width: 100%; }
 .f-group + .f-group { margin-top: 16px; }
 .f-group h3 { color: var(--ink-2); font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; }
 .f-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px 12px; }
@@ -118,6 +118,35 @@ main { max-width: 1200px; margin: 0 auto; padding: 24px; display: grid; gap: 24p
 .link { font: inherit; font-size: 12px; background: none; border: none; color: var(--accent-ink); cursor: pointer; padding: 4px 6px; }
 .kpis-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 #s-chips { margin-top: 6px; }
+
+/* KYC follow-up */
+:root { --st-warning: #fab219; --st-critical: #d03b3b; }
+.fu-strip {
+  display: flex; align-items: center; gap: 12px 20px; flex-wrap: wrap; margin-top: 20px; padding: 12px 14px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--page);
+}
+.fu-strip .lead { font-weight: 600; }
+.fu-strip .items { display: flex; gap: 16px; flex-wrap: wrap; color: var(--ink-2); }
+.fu-strip .items b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.fu-strip .btn { margin-left: auto; text-decoration: none; }
+.badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink); white-space: nowrap;
+  border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
+.badge::before { content: ""; width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.badge.b-not::before { background: var(--not-done); }
+.badge.b-refresh::before { background: var(--st-warning); }
+.badge.b-dq::before { background: var(--st-critical); border-radius: 1px; transform: rotate(45deg); width: 7px; height: 7px; }
+.badges { display: flex; gap: 4px; flex-wrap: wrap; }
+.fu-filters label { display: grid; gap: 2px; font-size: 12px; color: var(--ink-2); }
+.fu-filters select { font: inherit; font-size: 13px; color: var(--ink); background: var(--page); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; min-width: 130px; }
+.fu-kpis .kpi { cursor: pointer; text-align: left; font: inherit; color: inherit; background: none; }
+.fu-kpis .kpi:hover { background: var(--hover); }
+.fu-kpis .kpi.sel { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--hover); }
+.fu-kpis .kpi .label { display: flex; align-items: center; gap: 6px; }
+.fu-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 24px; }
+.table-scroll-x { overflow-x: auto; }
+table.fu-list td.details { white-space: normal; min-width: 280px; color: var(--ink-2); font-size: 12px; }
+table.fu-list td.details div + div { margin-top: 2px; }
+table.fu-list td { vertical-align: top; }
 
 /* KPI tiles */
 .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
@@ -208,6 +237,11 @@ dl.kv dd { margin: 0; }
 .detail-sec { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--grid); }
 
 @media (max-width: 860px) {
+  .fu-grid { grid-template-columns: minmax(0, 1fr); }
+  .fu-filters { flex-wrap: wrap; }
+  .fu-filters select { min-width: 0; width: 100%; }
+  .fu-filters label { flex: 1 1 100px; }
+  .fu-strip .btn { margin-left: 0; }
   .tabs { order: 3; width: 100%; margin: 0; }
   .head-actions { width: 100%; }
   #s-keyword { flex: 1; width: auto; }
@@ -222,6 +256,7 @@ dl.kv dd { margin: 0; }
   .kpis-3 { grid-template-columns: 1fr; }
   .f-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .bd-table .col-budget { display: none; }
+  #fu-search { flex: 1; width: auto; }
   .bd-table td, .bd-table th { padding-left: 4px; padding-right: 4px; }
   dl.kv { grid-template-columns: 1fr; }
 }
