@@ -20,11 +20,19 @@ const providers = ['None', 'In-house', 'Competitor A', 'Competitor B', 'Multiple
 const pains = ['Manual processes', 'Poor reporting visibility', 'High vendor cost', 'Slow onboarding',
   'Data quality issues', 'Limited integrations'];
 const deciders = ['CEO', 'CFO', 'COO', 'CTO', 'Head of Procurement', 'VP Operations'];
+const industries = ['Manufacturing', 'Healthcare', 'Retail', 'Financial services', 'Logistics', 'Technology', 'Energy', 'Hospitality'];
+const contracts = ['Monthly', 'Annual', 'Multi-year'];
+const procurement = ['Single approver', 'Committee', 'RFP required'];
+const integrations = ['ERP', 'CRM', 'Data warehouse', 'None'];
+const residency = ['No requirement', 'In-country', 'EU only', 'US only'];
+const int = (lo, hi) => Math.round(lo + rnd() * (hi - lo));
 
 const esc = (v) => (/[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
 const cols = ['client_id', 'client_name', 'region', 'team', 'account_owner', 'annual_budget_usd', 'kyc_status',
   'kyc_completed_date', 'q_primary_objective', 'q_decision_timeline', 'q_current_provider', 'q_key_pain_point',
-  'q_decision_maker', 'notes'];
+  'q_decision_maker', 'q_industry', 'q_preferred_contract', 'q_procurement_process', 'q_integration_needs',
+  'q_data_residency', 'q_employee_count', 'q_years_in_business', 'q_number_of_locations', 'q_expected_users',
+  'q_current_annual_spend_usd', 'q_satisfaction_current_provider', 'q_expected_growth_pct', 'notes'];
 const rows = [cols.join(',')];
 const used = new Set();
 const start = Date.UTC(2025, 0, 1), end = Date.UTC(2026, 9, 31);
@@ -39,7 +47,12 @@ for (let i = 1; i <= 220; i++) {
     `C${String(i).padStart(4, '0')}`, name, pick(regions), pick(teams), pick(owners), budget,
     done ? 'Completed' : pick(['Not started', 'In progress']), date,
     done ? pick(objectives) : '', done ? pick(timelines) : '', done ? pick(providers) : '',
-    done ? pick(pains) : '', done ? pick(deciders) : '', '',
+    done ? pick(pains) : '', done ? pick(deciders) : '',
+    done ? pick(industries) : '', done ? pick(contracts) : '', done ? pick(procurement) : '',
+    done ? pick(integrations) : '', done ? pick(residency) : '',
+    done ? pick([int(10, 99), int(100, 999), int(1000, 20000)]) : '', done ? int(1, 60) : '', done ? int(1, 120) : '',
+    done ? int(5, 5000) : '', done ? Math.round(budget * (0.3 + rnd())) : '', done ? int(1, 10) : '', done ? int(-5, 40) : '',
+    '',
   ].map(esc).join(','));
 }
 console.log(rows.join('\n'));

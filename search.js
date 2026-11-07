@@ -1,130 +1,218 @@
-/* Client search tab: filter clients by KYC answers (and a few account fields), summarize, export CSV.
-   Depends on window.KYC from app.js. */
+/* Client search tab: filter clients by KYC answers (and account fields), summarize, export CSV.
+   Depends on window.KYC from app.js.
+
+   Filter types are detected from the data:
+   - numeric: every non-empty value is a number ($ , % allowed) -> min / max range
+   - choice:  up to MAX_CHOICES distinct values                  -> multi-select dropdown
+   - text:    more distinct values than that (free text)         -> "contains" box */
 (() => {
   'use strict';
 
-  // A question with more distinct answers than this is treated as free text (a "contains" box)
-  // instead of a checkbox list.
-  const MAX_CHOICES = 30;
+  const MAX_CHOICES = 40;
+  const SEARCH_IN_DROPDOWN_AFTER = 8; // show a search box inside dropdowns with more options than this
 
-  // Account fields offered as criteria alongside the q_* question columns.
-  const BASE_FIELDS = [
+  const ACCOUNT_FIELDS = [
     { key: 'region', label: 'Region' },
     { key: 'team', label: 'Team' },
     { key: 'account_owner', label: 'Account owner' },
     { key: '_kyc', label: 'KYC status' },
+    { key: 'annual_budget_usd', label: 'Annual budget ($)', money: true },
   ];
 
   const $ = (s) => document.querySelector(s);
+  const e = (s) => KYC.esc(s);
   const st = {
-    fields: [],              // [{ key, label, type: 'choice'|'text', options: [{ value }] , isQuestion }]
-    picked: {},              // key -> Set of values (choice) or string (text)
-    keyword: '', min: null, max: null,
+    fields: [],
+    picked: {},   // choice: key -> Set; text: key -> string; numeric: key -> { min, max }
+    keyword: '',
+    open: null,   // key of the open dropdown
     sort: { key: 'annual_budget_usd', asc: false },
     results: [],
   };
 
-  const valueOf = (r, key) => (key === '_kyc' ? (r._done ? 'Completed' : (r.kyc_status || KYC.NOT_DONE)) : (r[key] || ''));
+  const raw = (r, key) => (key === '_kyc' ? (r._done ? 'Completed' : (r.kyc_status || KYC.NOT_DONE)) : r[key]);
+  const toNum = (v) => {
+    if (typeof v === 'number') return v;
+    const s = String(v ?? '').replace(/[$,%\s]/g, '');
+    return s === '' ? NaN : Number(s);
+  };
 
+  // "1500", "1,500", "$1.5k", "2M", "-4", "12%" -> number; '' -> null; anything else -> NaN
+  function parseAmount(text) {
+    const s = String(text).trim().toLowerCase().replace(/[$,%\s]/g, '');
+    if (s === '') return null;
+    const m = s.match(/^(-?\d*\.?\d+)([kmb]?)$/);
+    return m ? Number(m[1]) * { '': 1, k: 1e3, m: 1e6, b: 1e9 }[m[2]] : NaN;
+  }
+
+  // ---------- setup ----------
   function setup() {
     const rows = KYC.rows;
-    const qKeys = KYC.headers.filter((h) => h.startsWith('q_'));
+    const has = (k) => k === '_kyc' || KYC.headers.includes(k);
     const defs = [
-      ...qKeys.map((k) => ({ key: k, label: KYC.prettyKey(k), isQuestion: true })),
-      ...BASE_FIELDS.filter((f) => f.key === '_kyc' || KYC.headers.includes(f.key)),
+      ...ACCOUNT_FIELDS.filter((f) => has(f.key)).map((f) => ({ ...f, group: 'account' })),
+      ...KYC.headers.filter((h) => h.startsWith('q_')).map((k) => ({ key: k, label: KYC.prettyKey(k), group: 'question' })),
     ];
     st.fields = defs.map((f) => {
-      const vals = [...new Set(rows.map((r) => valueOf(r, f.key)).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-      return { ...f, type: vals.length > MAX_CHOICES ? 'text' : 'choice', options: vals };
+      const vals = rows.map((r) => raw(r, f.key)).filter((v) => v !== '' && v != null && !(typeof v === 'number' && isNaN(v)));
+      const nums = vals.map(toNum);
+      if (f.key !== '_kyc' && vals.length && nums.every(Number.isFinite)) {
+        return { ...f, type: 'numeric', lo: Math.min(...nums), hi: Math.max(...nums), money: f.money || /_usd$/.test(f.key) };
+      }
+      const opts = [...new Set(vals.map(String))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+      return { ...f, type: opts.length > MAX_CHOICES ? 'text' : 'choice', options: opts };
     });
-    reset(false);
+    st.picked = {}; st.keyword = ''; st.open = null;
+    $('#s-keyword').value = '';
     renderCriteria();
     run();
   }
 
-  function reset(rerender = true) {
-    st.picked = {};
-    st.keyword = ''; st.min = null; st.max = null;
-    $('#s-keyword').value = ''; $('#s-min').value = ''; $('#s-max').value = '';
-    if (rerender) { renderCriteria(); run(); }
-  }
-
   // ---------- matching ----------
-  function matchField(r, f) {
+  function active(f) {
     const p = st.picked[f.key];
-    if (f.type === 'choice') return !p || p.size === 0 || p.has(valueOf(r, f.key));
-    return !p || valueOf(r, f.key).toLowerCase().includes(p.toLowerCase());
+    if (!p) return false;
+    if (f.type === 'choice') return p.size > 0;
+    if (f.type === 'numeric') return p.min != null || p.max != null;
+    return p !== '';
   }
-  function matchBase(r) {
-    const b = r.annual_budget_usd;
-    if (st.min != null && !(b >= st.min)) return false;
-    if (st.max != null && !(b <= st.max)) return false;
-    if (st.keyword) {
-      const q = st.keyword.toLowerCase();
-      if (!Object.entries(r).some(([k, v]) => !k.startsWith('_') && String(v).toLowerCase().includes(q))) return false;
-    }
-    return true;
+  function matchField(r, f) {
+    if (!active(f)) return true;
+    const p = st.picked[f.key];
+    if (f.type === 'choice') return p.has(String(raw(r, f.key) ?? ''));
+    if (f.type === 'text') return String(raw(r, f.key) ?? '').toLowerCase().includes(p.toLowerCase());
+    const n = toNum(raw(r, f.key));
+    return Number.isFinite(n) && (p.min == null || n >= p.min) && (p.max == null || n <= p.max);
   }
-  const matchAll = (r, skipKey) => matchBase(r) && st.fields.every((f) => f.key === skipKey || matchField(r, f));
+  function matchKeyword(r) {
+    if (!st.keyword) return true;
+    const q = st.keyword.toLowerCase();
+    return Object.entries(r).some(([k, v]) => !k.startsWith('_') && String(v).toLowerCase().includes(q));
+  }
+  const matchAll = (r, skipKey) => matchKeyword(r) && st.fields.every((f) => f.key === skipKey || matchField(r, f));
 
-  // ---------- render ----------
+  // ---------- criteria UI ----------
+  const fmtNum = (f, n) => (f.money ? KYC.fmtMoney(n) : Number(n).toLocaleString());
+
   function renderCriteria() {
-    const html = st.fields.map((f) => {
-      const p = st.picked[f.key];
-      const on = f.type === 'choice' ? p && p.size > 0 : !!p;
-      const body = f.type === 'choice'
-        ? `<div class="opts">${f.options.map((v) => `<label class="opt" data-key="${KYC.esc(f.key)}" data-val="${KYC.esc(v)}">
-              <input type="checkbox" ${p && p.has(v) ? 'checked' : ''}><span>${KYC.esc(v)}</span><span class="n"></span></label>`).join('')}</div>`
-        : `<label class="text">Answer contains<input type="search" data-key="${KYC.esc(f.key)}" value="${KYC.esc(p || '')}"></label>`;
-      return `<fieldset class="crit ${on ? 'on' : ''}" data-key="${KYC.esc(f.key)}">
-        <h4><span>${KYC.esc(f.label)}</span><span class="tag">${f.isQuestion ? 'KYC question' : 'Account'}</span></h4>${body}</fieldset>`;
-    }).join('');
-    $('#s-criteria').innerHTML = html || '<p class="sub">No question columns (q_…) found in the data.</p>';
+    const groups = [
+      ['Account', st.fields.filter((f) => f.group === 'account')],
+      ['KYC questions: choices', st.fields.filter((f) => f.group === 'question' && f.type !== 'numeric')],
+      ['KYC questions: numbers', st.fields.filter((f) => f.group === 'question' && f.type === 'numeric')],
+    ].filter(([, list]) => list.length);
+    $('#s-criteria').innerHTML = groups.map(([title, list]) => `<div class="f-group"><h3>${e(title)}</h3>
+      <div class="f-grid">${list.map(fieldHTML).join('')}</div></div>`).join('');
+    syncButtons();
   }
 
-  // Facet counts: for each option, how many clients would match if it were the (only) answer chosen
-  // for that question, given every other criterion.
-  function updateCounts() {
-    const rows = KYC.rows;
-    for (const f of st.fields) {
-      if (f.type !== 'choice') continue;
-      const base = rows.filter((r) => matchAll(r, f.key));
-      const counts = new Map();
-      for (const r of base) { const v = valueOf(r, f.key); counts.set(v, (counts.get(v) || 0) + 1); }
-      document.querySelectorAll(`.crit[data-key="${CSS.escape(f.key)}"] .opt`).forEach((el) => {
-        const n = counts.get(el.dataset.val) || 0;
-        el.querySelector('.n').textContent = n.toLocaleString();
-        el.classList.toggle('zero', n === 0);
-      });
-      document.querySelector(`.crit[data-key="${CSS.escape(f.key)}"]`)
-        ?.classList.toggle('on', !!(st.picked[f.key] && st.picked[f.key].size));
+  function fieldHTML(f) {
+    const k = e(f.key);
+    const id = `f-${f.key.replace(/\W/g, '')}`;
+    if (f.type === 'choice') {
+      return `<div class="f-item" data-key="${k}"><span class="f-label" id="${id}-l">${e(f.label)}</span>
+        <button type="button" class="dd-btn" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="${id}-l ${id}-b" id="${id}-b"></button></div>`;
     }
-    st.fields.filter((f) => f.type === 'text').forEach((f) =>
-      document.querySelector(`.crit[data-key="${CSS.escape(f.key)}"]`)?.classList.toggle('on', !!st.picked[f.key]));
+    if (f.type === 'numeric') {
+      const p = st.picked[f.key] || {};
+      return `<div class="f-item" data-key="${k}"><span class="f-label" title="${e(f.label)}">${e(f.label)}</span>
+        <div class="f-range">
+          <input type="text" inputmode="decimal" data-bound="min" aria-label="${e(f.label)} minimum" placeholder="${e(fmtNum(f, f.lo))}" value="${p.min ?? ''}" title="Accepts 1500, 1.5k, 2M">
+          <span>–</span>
+          <input type="text" inputmode="decimal" data-bound="max" aria-label="${e(f.label)} maximum" placeholder="${e(fmtNum(f, f.hi))}" value="${p.max ?? ''}" title="Accepts 1500, 1.5k, 2M">
+        </div></div>`;
+    }
+    return `<div class="f-item" data-key="${k}"><span class="f-label">${e(f.label)}</span>
+      <input type="search" data-text placeholder="Contains…" aria-label="${e(f.label)} contains" value="${e(st.picked[f.key] || '')}"></div>`;
   }
 
+  // Button captions + "on" state; cheap, so it runs after every change.
+  function syncButtons() {
+    for (const f of st.fields) {
+      const item = document.querySelector(`.f-item[data-key="${CSS.escape(f.key)}"]`);
+      if (!item) continue;
+      item.classList.toggle('on', active(f));
+      if (f.type !== 'choice') continue;
+      const p = st.picked[f.key];
+      const btn = item.querySelector('.dd-btn');
+      btn.innerHTML = !p || !p.size ? '<span class="any">Any</span>'
+        : p.size === 1 ? e([...p][0]) : `${p.size} selected`;
+      btn.title = p && p.size ? [...p].join(', ') : '';
+      btn.setAttribute('aria-expanded', String(st.open === f.key));
+    }
+  }
+
+  function openDropdown(key) {
+    closeDropdown();
+    const f = st.fields.find((x) => x.key === key);
+    const item = document.querySelector(`.f-item[data-key="${CSS.escape(key)}"]`);
+    st.open = key;
+    const pop = document.createElement('div');
+    pop.className = 'dd-pop';
+    pop.setAttribute('role', 'listbox');
+    pop.setAttribute('aria-multiselectable', 'true');
+    pop.innerHTML = `${f.options.length > SEARCH_IN_DROPDOWN_AFTER ? '<input type="search" class="dd-find" placeholder="Find…" aria-label="Find option">' : ''}
+      <div class="dd-opts">${f.options.map((v) => `<label class="opt" data-val="${e(v)}">
+        <input type="checkbox" ${st.picked[key]?.has(v) ? 'checked' : ''}><span>${e(v)}</span><span class="n"></span></label>`).join('')}</div>
+      <div class="dd-foot"><button type="button" class="link" data-act="clear">Clear</button><button type="button" class="link" data-act="done">Done</button></div>`;
+    item.appendChild(pop);
+    // keep the popover on-screen
+    const r = pop.getBoundingClientRect();
+    if (r.right > window.innerWidth - 8) { pop.style.left = 'auto'; pop.style.right = '0'; }
+    updateCounts();
+    syncButtons();
+    (pop.querySelector('.dd-find') || pop.querySelector('input')).focus();
+  }
+  function closeDropdown(focusBtn) {
+    const pop = document.querySelector('.dd-pop');
+    if (!pop) { st.open = null; return; }
+    const btn = pop.parentElement.querySelector('.dd-btn');
+    pop.remove(); st.open = null; syncButtons();
+    if (focusBtn) btn.focus();
+  }
+
+  // Counts in the open dropdown: clients you'd get by picking that answer, given every other filter.
+  function updateCounts() {
+    if (!st.open) return;
+    const counts = new Map();
+    for (const r of KYC.rows) {
+      if (!matchAll(r, st.open)) continue;
+      const v = String(raw(r, st.open) ?? '');
+      counts.set(v, (counts.get(v) || 0) + 1);
+    }
+    document.querySelectorAll('.dd-pop .opt').forEach((el) => {
+      const n = counts.get(el.dataset.val) || 0;
+      el.querySelector('.n').textContent = n.toLocaleString();
+      el.classList.toggle('zero', n === 0);
+    });
+  }
+
+  // ---------- results ----------
   function run() {
-    const all = KYC.rows;
-    st.results = all.filter((r) => matchAll(r));
+    st.results = KYC.rows.filter((r) => matchAll(r));
+    syncButtons();
     updateCounts();
     renderChips();
-    renderSummary(all.length);
+    renderSummary(KYC.rows.length);
     renderResults();
   }
 
   function renderChips() {
     const chips = [];
     for (const f of st.fields) {
+      if (!active(f)) continue;
       const p = st.picked[f.key];
-      if (f.type === 'choice' && p) p.forEach((v) => chips.push([`${f.label}: ${v}`, f.key, v]));
-      if (f.type === 'text' && p) chips.push([`${f.label} contains “${p}”`, f.key, '']);
+      if (f.type === 'choice') p.forEach((v) => chips.push([`${f.label}: ${v}`, f.key, v]));
+      else if (f.type === 'text') chips.push([`${f.label} contains “${p}”`, f.key, '']);
+      else {
+        const t = p.min != null && p.max != null ? `${fmtNum(f, p.min)}–${fmtNum(f, p.max)}`
+          : p.min != null ? `≥ ${fmtNum(f, p.min)}` : `≤ ${fmtNum(f, p.max)}`;
+        chips.push([`${f.label}: ${t}`, f.key, '']);
+      }
     }
     if (st.keyword) chips.push([`Keyword: “${st.keyword}”`, '_keyword', '']);
-    if (st.min != null) chips.push([`Budget ≥ ${KYC.fmtMoney(st.min)}`, '_min', '']);
-    if (st.max != null) chips.push([`Budget ≤ ${KYC.fmtMoney(st.max)}`, '_max', '']);
     $('#s-chips').innerHTML = chips.length
-      ? chips.map(([t, k, v]) => `<button class="chip" data-skey="${KYC.esc(k)}" data-sval="${KYC.esc(v)}">${KYC.esc(t)}</button>`).join('')
-      : '<span class="sub">No criteria selected, so every client is shown.</span>';
+      ? chips.map(([t, k, v]) => `<button class="chip" data-skey="${e(k)}" data-sval="${e(v)}">${e(t)}</button>`).join('')
+      : '<span class="sub">No filters, so every client is shown.</span>';
   }
 
   function renderSummary(total) {
@@ -137,16 +225,16 @@
       ['Average budget', budgets.length ? KYC.fmtMoney(Math.round(sum / budgets.length)) : '–', 'per client with a budget'],
     ];
     $('#s-summary').innerHTML = tiles.map(([l, v, note]) =>
-      `<div class="kpi"><div class="label">${KYC.esc(l)}</div><div class="value">${v}</div><div class="note">${KYC.esc(note)}</div></div>`).join('');
+      `<div class="kpi"><div class="label">${e(l)}</div><div class="value">${v}</div><div class="note">${e(note)}</div></div>`).join('');
     $('#s-export').disabled = n === 0;
     $('#s-export').textContent = n ? `Export CSV (${KYC.fmtInt(n)})` : 'Export CSV';
   }
 
   function sorted() {
     const { key, asc } = st.sort;
+    const get = (r) => (key === 'kyc_status' ? raw(r, '_kyc') : r[key]);
     return [...st.results].sort((a, b) => {
-      const x = key === 'kyc_status' ? valueOf(a, '_kyc') : a[key];
-      const y = key === 'kyc_status' ? valueOf(b, '_kyc') : b[key];
+      const x = get(a), y = get(b);
       const c = typeof x === 'number' && typeof y === 'number' ? (Number.isFinite(x) ? x : -1) - (Number.isFinite(y) ? y : -1)
         : String(x ?? '').localeCompare(String(y ?? ''));
       return asc ? c : -c;
@@ -159,12 +247,11 @@
       th.classList.toggle('sorted', th.dataset.sort === key);
       th.classList.toggle('asc', th.dataset.sort === key && asc);
     });
-    const e = KYC.esc;
     $('#s-results tbody').innerHTML = sorted().map((r) => `<tr data-id="${e(r.client_id)}">
       <td>${e(r.client_name)}</td><td>${e(r.region)}</td><td>${e(r.team)}</td><td>${e(r.account_owner)}</td>
       <td class="num">${KYC.fmtMoney(r.annual_budget_usd)}</td>
-      <td><span class="status ${r._done ? 'done' : ''}">${e(valueOf(r, '_kyc'))}</span></td></tr>`).join('') ||
-      '<tr><td colspan="6" style="color:var(--muted)">No clients match these criteria.</td></tr>';
+      <td><span class="status ${r._done ? 'done' : ''}">${e(raw(r, '_kyc'))}</span></td></tr>`).join('') ||
+      '<tr><td colspan="6" style="color:var(--muted)">No clients match these filters.</td></tr>';
   }
 
   // ---------- export ----------
@@ -186,38 +273,73 @@
   }
 
   // ---------- events ----------
-  $('#s-criteria').addEventListener('change', (e) => {
-    const opt = e.target.closest('.opt');
+  const crit = $('#s-criteria');
+  crit.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('.dd-btn');
+    if (btn) {
+      const key = btn.closest('.f-item').dataset.key;
+      return st.open === key ? closeDropdown(true) : openDropdown(key);
+    }
+    const act = ev.target.closest('.dd-foot .link');
+    if (act) {
+      if (act.dataset.act === 'clear') {
+        delete st.picked[st.open];
+        document.querySelectorAll('.dd-pop .opt input').forEach((i) => { i.checked = false; });
+        return run();
+      }
+      return closeDropdown(true);
+    }
+  });
+  crit.addEventListener('change', (ev) => {
+    const opt = ev.target.closest('.dd-pop .opt');
     if (!opt) return;
-    const { key, val } = opt.dataset;
-    const set = st.picked[key] || (st.picked[key] = new Set());
-    if (e.target.checked) set.add(val); else set.delete(val);
+    const set = st.picked[st.open] || (st.picked[st.open] = new Set());
+    if (ev.target.checked) set.add(opt.dataset.val); else set.delete(opt.dataset.val);
     run();
   });
-  $('#s-criteria').addEventListener('input', (e) => {
-    if (e.target.matches('input[type=search][data-key]')) { st.picked[e.target.dataset.key] = e.target.value.trim(); run(); }
+  crit.addEventListener('input', (ev) => {
+    const t = ev.target;
+    if (t.classList.contains('dd-find')) {
+      const q = t.value.toLowerCase();
+      document.querySelectorAll('.dd-pop .opt').forEach((o) => { o.hidden = !o.dataset.val.toLowerCase().includes(q); });
+      return;
+    }
+    const key = t.closest('.f-item')?.dataset.key;
+    if (!key) return;
+    if (t.dataset.bound) {
+      const p = st.picked[key] || (st.picked[key] = {});
+      const v = parseAmount(t.value);
+      t.setAttribute('aria-invalid', String(Number.isNaN(v)));
+      p[t.dataset.bound] = Number.isFinite(v) ? v : null;
+    } else if (t.hasAttribute('data-text')) st.picked[key] = t.value.trim();
+    run();
   });
-  $('#s-keyword').addEventListener('input', (e) => { st.keyword = e.target.value.trim(); run(); });
-  const num = (v) => (v === '' ? null : Number(v));
-  $('#s-min').addEventListener('input', (e) => { st.min = num(e.target.value); run(); });
-  $('#s-max').addEventListener('input', (e) => { st.max = num(e.target.value); run(); });
-  $('#s-reset').addEventListener('click', () => reset());
+  document.addEventListener('click', (ev) => {
+    if (st.open && !ev.target.closest('.dd-pop, .dd-btn')) closeDropdown(false);
+  });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && st.open) { ev.preventDefault(); closeDropdown(true); }
+  });
+
+  $('#s-keyword').addEventListener('input', (ev) => { st.keyword = ev.target.value.trim(); run(); });
+  $('#s-reset').addEventListener('click', () => {
+    st.picked = {}; st.keyword = ''; $('#s-keyword').value = '';
+    closeDropdown(); renderCriteria(); run();
+  });
   $('#s-export').addEventListener('click', exportCSV);
-  $('#s-chips').addEventListener('click', (e) => {
-    const c = e.target.closest('.chip');
+  $('#s-chips').addEventListener('click', (ev) => {
+    const c = ev.target.closest('.chip');
     if (!c) return;
     const { skey, sval } = c.dataset;
     if (skey === '_keyword') { st.keyword = ''; $('#s-keyword').value = ''; }
-    else if (skey === '_min') { st.min = null; $('#s-min').value = ''; }
-    else if (skey === '_max') { st.max = null; $('#s-max').value = ''; }
     else {
       const f = st.fields.find((x) => x.key === skey);
       if (f.type === 'choice') st.picked[skey].delete(sval); else delete st.picked[skey];
     }
-    renderCriteria(); run();
+    closeDropdown(); renderCriteria(); run();
   });
-  document.querySelector('#s-results thead').addEventListener('click', (e) => {
-    const th = e.target.closest('th');
+  document.querySelector('#s-results thead').addEventListener('click', (ev) => {
+    const th = ev.target.closest('th');
     if (!th) return;
     const k = th.dataset.sort;
     st.sort = { key: k, asc: st.sort.key === k ? !st.sort.asc : k !== 'annual_budget_usd' };

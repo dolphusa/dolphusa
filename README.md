@@ -37,12 +37,18 @@ Click a client to see the budget and every KYC answer.
 
 ### Client search tab (`search.js`)
 
-- Each KYC question (every `q_` column) becomes a filter card listing its answers. Region, team, account owner
-  and KYC status are filters too, along with a keyword box and min/max budget.
-- Answers picked within one question are combined with **OR**, and different questions with **AND**.
-  The number next to each answer is how many clients you would get by picking it, given your other choices.
-- A question with more than 30 distinct answers (i.e. free text) gets an "answer contains" text box instead of checkboxes.
-- The summary shows **clients found**, **total budget** and average budget.
+Filters are generated from the CSV, so new question columns appear automatically. Each column's filter type is detected from its values:
+
+| column values | filter |
+|---|---|
+| every answer is a number (`$`, `,`, `%` allowed) | **min – max** range. Accepts `1500`, `1.5k`, `2M`. Leaving a side empty means no limit, and clients with no answer are excluded once a range is set |
+| up to 40 distinct answers | **multi-select dropdown** with a count next to each answer, plus a find box for long lists |
+| more than 40 distinct answers (free text) | **"contains"** text box |
+
+- Filters are grouped as *Account* (region, team, owner, KYC status, budget), *KYC questions: choices* and *KYC questions: numbers*.
+- Answers picked in one dropdown are combined with **OR**, and different filters with **AND**. A dropdown's count is
+  how many clients you would get by picking that answer, given your other filters.
+- The summary shows **clients found**, **total budget** and average budget. Active filters appear as chips, and clicking one removes it.
 - **Export CSV** downloads the matching clients with every original column, in the on-screen sort order.
 
 ## CSV columns

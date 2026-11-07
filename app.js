@@ -25,7 +25,8 @@
     if (n >= 1e3) return `$${Math.round(n / 1e3)}K`;
     return `$${n}`;
   };
-  const prettyKey = (k) => k.replace(/^q_/, '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  const prettyKey = (k) => k.replace(/^q_/, '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+    .replace(/\bUsd\b/g, '(USD)').replace(/\bPct\b/g, '(%)');
 
   // ---------- CSV ----------
   function parseCSV(text) {

@@ -89,16 +89,14 @@
       <div class="section-head">
         <div>
           <h2 id="sc-title">Search by criteria</h2>
-          <p class="sub">Choose answers to filter clients. Answers you pick under the same question are combined with OR; different questions are combined with AND. Counts show how many clients each option would add.</p>
+          <p class="sub">Answers picked in one dropdown are combined with OR; different filters are combined with AND. Numbers in a dropdown show how many clients each answer would give.</p>
         </div>
-        <button class="btn" id="s-reset" type="button">Reset criteria</button>
+        <div class="head-actions">
+          <input type="search" id="s-keyword" placeholder="Keyword in any field…" aria-label="Keyword">
+          <button class="btn" id="s-reset" type="button">Reset</button>
+        </div>
       </div>
-      <div class="criteria-basic">
-        <label>Keyword<input type="search" id="s-keyword" placeholder="Any field contains…"></label>
-        <label>Min budget ($)<input type="number" id="s-min" min="0" step="1000" placeholder="0"></label>
-        <label>Max budget ($)<input type="number" id="s-max" min="0" step="1000" placeholder="No limit"></label>
-      </div>
-      <div class="criteria" id="s-criteria"></div>
+      <div id="s-criteria"></div>
     </section>
 
     <section class="card" aria-labelledby="sr-title">
