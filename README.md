@@ -30,10 +30,16 @@ and the `kyc:data` event fires whenever data is (re)loaded.
 - Breakdown lists **by region** and **by team**: clients, completed, not completed, budget, and completion rate.
   Click a row to filter the chart (and everything else). Region and team can be combined, and each list's counts
   respect the other list's selection. Click the row again, or the chip at the top, to clear it.
-- Click a slice or legend row to filter the client lookup to that group (for example, every client with KYC not completed).
+- Click a slice or legend row to open those clients in **Client search** (same region/team, filtered by completion quarter).
 
-**2. Client lookup**: a searchable, sortable table (search covers names, owners and KYC answers).
-Click a client to see the budget and every KYC answer.
+**2. Market overview**: answers and budget of **KYC-completed clients** (only they have answers). It follows the region/team selection above.
+- Tiles: total budget of KYC-completed clients (and its share of the book's budget), average and median budget, and the budget of clients not yet KYC'd.
+- **Budget distribution** in bands ($10K–25K, 25K–50K, …).
+- **Key questions**: small charts of preselected questions (`PRESET_QUESTIONS` at the top of `market.js`).
+- **Explore any question**: pick any KYC question. Number questions are grouped into bands automatically.
+- A **Clients / Budget** toggle switches every chart between client counts and total budget.
+- Click any bar to open those clients in Client search, which lists all clients (the old client lookup table now lives there).
+- Answers with a natural order are listed in that order (`ANSWER_ORDER` in `market.js`, e.g. decision timeline).
 
 The bottom of the KYC coverage card shows how many clients need follow-up, for the current region/team selection,
 with an **Open KYC follow-up →** button that carries that selection over.
@@ -61,6 +67,10 @@ that differ only by case or spacing (e.g. "Emea" vs "EMEA", where the most commo
 - Change `REFRESH_AFTER_MONTHS` / `DUE_SOON_DAYS` at the top of `followup.js` to adjust the rules.
 
 ### Client search tab (`search.js`)
+
+This is also the full client list: with no filters it shows every client. Its filters are kept in the URL
+(`#search?region=APAC&q_industry=Retail&q_employee_count=100..500`), so any search can be shared as a link.
+Other views link into it with filters already set.
 
 Filters are generated from the CSV, so new question columns appear automatically. Each column's filter type is detected from its values:
 

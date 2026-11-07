@@ -45,7 +45,7 @@
             <div class="tooltip" id="tooltip" role="status" hidden></div>
           </div>
           <table class="legend" id="legend" aria-label="KYC status breakdown"></table>
-          <p class="hint">Click a slice or legend row to list those clients below.</p>
+          <p class="hint">Click a slice or legend row to open those clients in Client search.</p>
         </div>
 
         <div class="breakdowns">
@@ -58,31 +58,43 @@
       <div class="fu-strip" id="fu-strip" aria-live="polite"></div>
     </section>
 
-    <!-- Section 2: client lookup -->
-    <section class="card" aria-labelledby="s2-title">
+    <!-- Section 2: market overview (KYC-completed clients only) -->
+    <section class="card" aria-labelledby="m-title">
       <div class="section-head">
         <div>
-          <h2 id="s2-title">Client lookup</h2>
-          <p class="sub" id="dir-sub"></p>
+          <h2 id="m-title">Market overview</h2>
+          <p class="sub" id="m-sub"></p>
         </div>
-        <input type="search" id="search" placeholder="Search client, owner, answer…" aria-label="Search clients">
+        <div class="seg" role="group" aria-label="Measure">
+          <button type="button" data-measure="clients" aria-pressed="true">Clients</button>
+          <button type="button" data-measure="budget" aria-pressed="false">Budget</button>
+        </div>
       </div>
-      <div class="table-scroll">
-        <table class="clients" id="clients">
-          <thead>
-            <tr>
-              <th data-sort="client_name">Client</th>
-              <th data-sort="region">Region</th>
-              <th data-sort="team">Team</th>
-              <th data-sort="account_owner">Owner</th>
-              <th data-sort="annual_budget_usd" class="num">Budget</th>
-              <th data-sort="kyc_status">KYC</th>
-              <th data-sort="kyc_completed_date">Completed</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+      <div class="kpis" id="m-kpis"></div>
+
+      <div class="m-grid">
+        <div class="m-card m-wide">
+          <h3>Budget distribution</h3>
+          <p class="sub m-cap" id="m-budget-cap"></p>
+          <div class="hbars" id="m-budget"></div>
+        </div>
       </div>
+
+      <h3 class="m-group">Key questions</h3>
+      <div class="m-grid" id="m-presets"></div>
+
+      <div class="m-explore">
+        <div class="m-explore-head">
+          <h3>Explore any question</h3>
+          <label>Question <select id="m-question"></select></label>
+          <label>Sort <select id="m-sort"><option value="value">Largest first</option><option value="label">Answer order</option></select></label>
+        </div>
+        <div class="m-card">
+          <p class="sub m-cap" id="m-explore-cap"></p>
+          <div class="hbars" id="m-explore"></div>
+        </div>
+      </div>
+      <p class="hint">Click any bar to open those clients in Client search.</p>
     </section>
   </main>
 
@@ -179,6 +191,7 @@
               <th data-sort="account_owner">Owner</th>
               <th data-sort="annual_budget_usd" class="num">Budget</th>
               <th data-sort="kyc_status">KYC</th>
+              <th data-sort="_qKey">Completed</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -195,5 +208,6 @@
   <script src="app.js"></script>
   <script src="search.js"></script>
   <script src="followup.js"></script>
+  <script src="market.js"></script>
 </body>
 </html>

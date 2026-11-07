@@ -10,9 +10,6 @@
     rows: [],
     region: null,      // selected region (cross-filter)
     team: null,        // selected team (cross-filter)
-    slice: null,       // selected pie slice key (filters the lookup table only)
-    search: '',
-    sort: { key: 'client_name', asc: true },
   };
 
   const $ = (s) => document.querySelector(s);
@@ -75,7 +72,8 @@
     const date = r.kyc_completed_date ? new Date(r.kyc_completed_date) : null;
     const done = /^complete/i.test(status) || (!status && date && !isNaN(date));
     let qKey = null, qLabel = null;
-    if (done && date && !isNaN(date)) {
+    // A future date is a data error (flagged on the follow-up tab), so it doesn't create a quarter.
+    if (done && date && !isNaN(date) && date <= Date.now()) {
       const y = date.getUTCFullYear(), q = Math.floor(date.getUTCMonth() / 3) + 1;
       qKey = y * 10 + q; qLabel = `Q${q} ${y}`;
     }
@@ -130,7 +128,6 @@
     renderPie(rows);
     renderBreakdown('region', 'Region', '#bd-region');
     renderBreakdown('team', 'Team', '#bd-team');
-    renderTable(rows);
     document.dispatchEvent(new CustomEvent('kyc:overview', { detail: { rows, region: state.region, team: state.team } }));
   }
 
@@ -144,7 +141,6 @@
     const chips = [];
     if (state.region) chips.push(`<button class="chip" data-clear="region">Region: ${esc(state.region)}</button>`);
     if (state.team) chips.push(`<button class="chip" data-clear="team">Team: ${esc(state.team)}</button>`);
-    if (state.slice) chips.push(`<button class="chip" data-clear="slice">${esc(sliceDefs.find((s) => s.key === state.slice)?.label)}</button>`);
     if (chips.length > 1) chips.push('<button class="chip clear" data-clear="all">Clear all</button>');
     el.innerHTML = chips.join('');
   }
@@ -175,18 +171,17 @@
     visible.forEach((d) => {
       const sweep = (d.n / total) * Math.PI * 2;
       paths.push(`<path d="${arc(cx, cy, R, r0, a, a + sweep)}" fill="${d.color}" data-key="${d.key}"
-        class="${state.slice === d.key ? 'hot' : ''}" tabindex="0" aria-label="${esc(d.label)}: ${d.n}"></path>`);
+        tabindex="0" role="link" aria-label="${esc(d.label)}: ${d.n} clients. Open in Client search"></path>`);
       a += sweep;
     });
     const done = rows.filter((r) => r._done).length;
     svg.innerHTML = `${paths.join('')}
       <text x="${cx}" y="${cy + 4}" text-anchor="middle" class="center-value">${fmtPct(done, total)}</text>
       <text x="${cx}" y="${cy + 26}" text-anchor="middle" class="center-label">KYC completed</text>`;
-    svg.classList.toggle('has-hover', !!state.slice);
 
     // Legend doubles as the data table.
     const leg = $('#legend');
-    const row = (d) => `<tr data-key="${d.key}" class="${state.slice === d.key ? 'sel' : ''}">
+    const row = (d) => `<tr data-key="${d.key}" tabindex="0" title="Open these clients in Client search">
       <td><span class="swatch" style="background:${d.color}"></span>${esc(d.label)}</td>
       <td class="num">${fmtInt(d.n)}</td><td class="num">${fmtPct(d.n, total)}</td></tr>`;
     leg.innerHTML = `<tbody>${row(data[0])}
@@ -210,8 +205,8 @@
       };
       const hide = () => {
         tip.hidden = true;
-        svg.querySelectorAll('path').forEach((q) => q.classList.toggle('hot', q.dataset.key === state.slice));
-        svg.classList.toggle('has-hover', !!state.slice);
+        svg.querySelectorAll('path').forEach((q) => q.classList.remove('hot'));
+        svg.classList.remove('has-hover');
       };
       p.addEventListener('mousemove', show);
       p.addEventListener('focus', show);
@@ -250,30 +245,6 @@
       </tr>`).join('')}</tbody></table>`;
   }
 
-  function renderTable(rows) {
-    const slice = sliceDefs.find((s) => s.key === state.slice);
-    const q = state.search.toLowerCase();
-    let list = rows.filter((r) => (!slice || slice.match(r)) &&
-      (!q || Object.entries(r).some(([k, v]) => !k.startsWith('_') && String(v).toLowerCase().includes(q))));
-    const { key, asc } = state.sort;
-    list = list.sort((a, b) => {
-      const x = a[key], y = b[key];
-      const c = typeof x === 'number' && typeof y === 'number' ? x - y : String(x ?? '').localeCompare(String(y ?? ''));
-      return asc ? c : -c;
-    });
-    $('#dir-sub').textContent = `${fmtInt(list.length)} of ${fmtInt(state.rows.length)} clients · ${scopeLabel()}${slice ? ` · ${slice.label}` : ''}. Click a client for budget and KYC answers.`;
-    document.querySelectorAll('#clients th').forEach((th) => {
-      th.classList.toggle('sorted', th.dataset.sort === key);
-      th.classList.toggle('asc', th.dataset.sort === key && asc);
-    });
-    $('#clients tbody').innerHTML = list.map((r) => `<tr data-id="${esc(r.client_id)}">
-      <td>${esc(r.client_name)}</td><td>${esc(r.region)}</td><td>${esc(r.team)}</td><td>${esc(r.account_owner)}</td>
-      <td class="num">${fmtMoney(r.annual_budget_usd)}</td>
-      <td><span class="status ${r._done ? 'done' : ''}">${esc(r._done ? 'Completed' : (r.kyc_status || NOT_DONE))}</span></td>
-      <td>${esc(r._qLabel || '')}</td></tr>`).join('') ||
-      '<tr><td colspan="7" style="color:var(--muted)">No clients match.</td></tr>';
-  }
-
   function showDetail(id) {
     const r = state.rows.find((x) => x.client_id === id);
     if (!r) return;
@@ -295,34 +266,39 @@
   }
 
   // ---------- events ----------
-  function toggleSlice(key) { state.slice = state.slice === key ? null : key; render(); }
+  // Quarter label used for the "KYC completed (quarter)" filter on the Client search tab.
+  const quarterOf = (r) => r._qLabel || (r._done ? 'Completed (no date)' : NOT_DONE);
+
+  // Slice / legend click: open Client search with the same region, team and quarter(s).
+  function openSlice(key) {
+    const slice = sliceDefs.find((s) => s.key === key);
+    if (!slice) return;
+    const p = new URLSearchParams();
+    if (state.region) p.append('region', state.region);
+    if (state.team) p.append('team', state.team);
+    [...new Set(state.rows.filter(slice.match).map(quarterOf))].forEach((q) => p.append('_quarter', q));
+    location.hash = `#search?${p}`;
+  }
 
   document.addEventListener('click', (e) => {
-    const bd = e.target.closest('.bd-table tbody tr');
+    const bd = e.target.closest('.bd-table tbody tr[data-dim]');
     if (bd) { const { dim, val } = bd.dataset; state[dim] = state[dim] === val ? null : val; return render(); }
     const sl = e.target.closest('#pie path, #legend tr[data-key]');
-    if (sl) return toggleSlice(sl.dataset.key);
+    if (sl) return openSlice(sl.dataset.key);
     const chip = e.target.closest('.chip[data-clear]');
     if (chip) {
       const k = chip.dataset.clear;
-      if (k === 'all') { state.region = state.team = state.slice = null; } else state[k] = null;
+      if (k === 'all') { state.region = state.team = null; } else state[k] = null;
       return render();
     }
-    const th = e.target.closest('#clients th');
-    if (th) {
-      const k = th.dataset.sort;
-      state.sort = { key: k, asc: state.sort.key === k ? !state.sort.asc : k !== 'annual_budget_usd' };
-      return renderTable(filtered());
-    }
-    const tr = e.target.closest('#clients tbody tr[data-id], #s-results tbody tr[data-id]');
+    const tr = e.target.closest('#s-results tbody tr[data-id]');
     if (tr) showDetail(tr.dataset.id);
   });
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
-    const t = e.target.closest('.bd-table tbody tr, #pie path');
+    const t = e.target.closest('.bd-table tbody tr[data-dim], #pie path, #legend tr[data-key]');
     if (t) { e.preventDefault(); t.dispatchEvent(new MouseEvent('click', { bubbles: true })); }
   });
-  $('#search').addEventListener('input', (e) => { state.search = e.target.value.trim(); renderTable(filtered()); });
 
   $('#theme-toggle').addEventListener('click', () => {
     const root = document.documentElement;
@@ -340,14 +316,14 @@
   function load(text, source) {
     state.rows = parseCSV(text).map(normalize);
     state.numericCols = detectNumericCols(state.rows, state.headers || []);
-    state.region = state.team = state.slice = null;
+    state.region = state.team = null;
     buildSliceDefs();
     $('#data-source').textContent = `${fmtInt(state.rows.length)} clients · source: ${source}`;
     document.dispatchEvent(new CustomEvent('kyc:data')); // other tabs prepare first...
     render(); // ...so they can react to the overview's 'kyc:overview' event
   }
 
-  // ---------- tabs (hash routing: #overview, #search) ----------
+  // ---------- tabs (hash routing: #overview, #followup, #search; params after '?') ----------
   function route() {
     const tab = location.hash.slice(1).split('?')[0] || 'overview';
     const known = [...document.querySelectorAll('.tab-panel')].map((el) => el.id.replace('tab-', ''));
@@ -368,7 +344,7 @@
     get headers() { return state.headers || []; },
     get numericCols() { return state.numericCols || new Set(); },
     get overview() { return { region: state.region, team: state.team }; },
-    esc, fmtInt, fmtMoney, prettyKey, showDetail, toNum, NOT_DONE,
+    esc, fmtInt, fmtMoney, fmtPct, prettyKey, showDetail, toNum, quarterOf, NOT_DONE,
   };
 
   fetch('data/clients.csv')

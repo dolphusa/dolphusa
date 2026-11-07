@@ -16,6 +16,7 @@
     { key: 'team', label: 'Team' },
     { key: 'account_owner', label: 'Account owner' },
     { key: '_kyc', label: 'KYC status' },
+    { key: '_quarter', label: 'KYC completed (quarter)' },
     { key: 'annual_budget_usd', label: 'Annual budget ($)', money: true },
   ];
 
@@ -30,7 +31,10 @@
     results: [],
   };
 
-  const raw = (r, key) => (key === '_kyc' ? (r._done ? 'Completed' : (r.kyc_status || KYC.NOT_DONE)) : r[key]);
+  const raw = (r, key) => (key === '_kyc' ? (r._done ? 'Completed' : (r.kyc_status || KYC.NOT_DONE))
+    : key === '_quarter' ? KYC.quarterOf(r) : r[key]);
+  // "Q3 2026" sorts by year then quarter; anything else after, alphabetically.
+  const qSort = (v) => { const m = /^Q(\d) (\d{4})$/.exec(v); return m ? Number(m[2]) * 10 + Number(m[1]) : Infinity; };
   const toNum = (v) => KYC.toNum(v);
 
   // "1500", "1,500", "$1.5k", "2M", "-4", "12%" -> number; '' -> null; anything else -> NaN
@@ -44,7 +48,7 @@
   // ---------- setup ----------
   function setup() {
     const rows = KYC.rows;
-    const has = (k) => k === '_kyc' || KYC.headers.includes(k);
+    const has = (k) => k.startsWith('_') || KYC.headers.includes(k);
     const defs = [
       ...ACCOUNT_FIELDS.filter((f) => has(f.key)).map((f) => ({ ...f, group: 'account' })),
       ...KYC.headers.filter((h) => h.startsWith('q_')).map((k) => ({ key: k, label: KYC.prettyKey(k), group: 'question' })),
@@ -55,11 +59,13 @@
       if (KYC.numericCols.has(f.key) && nums.length) {
         return { ...f, type: 'numeric', lo: Math.min(...nums), hi: Math.max(...nums), money: f.money || /_usd$/.test(f.key) };
       }
-      const opts = [...new Set(vals.map(String))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+      const opts = [...new Set(vals.map(String))].sort((a, b) => (f.key === '_quarter' ? qSort(b) - qSort(a) || 0 : 0)
+        || a.localeCompare(b, undefined, { numeric: true }));
       return { ...f, type: opts.length > MAX_CHOICES ? 'text' : 'choice', options: opts };
     });
     st.picked = {}; st.keyword = ''; st.open = null;
     $('#s-keyword').value = '';
+    readHash();
     renderCriteria();
     run();
   }
@@ -190,7 +196,50 @@
     renderChips();
     renderSummary(KYC.rows.length);
     renderResults();
+    writeHash();
   }
+
+  // ---------- URL state ----------
+  // #search?region=APAC&q_industry=Retail&q_industry=Energy&q_employee_count=100..500&kw=foo
+  // Repeated keys = several answers. Lets other tabs (and colleagues) link straight to a search.
+  let writing = false;
+  function readHash() {
+    const [tab, qs] = location.hash.slice(1).split('?');
+    if (tab !== 'search' || !qs) return false;
+    const p = new URLSearchParams(qs);
+    st.picked = {};
+    for (const f of st.fields) {
+      const vals = p.getAll(f.key);
+      if (!vals.length) continue;
+      if (f.type === 'choice') st.picked[f.key] = new Set(vals);
+      else if (f.type === 'text') st.picked[f.key] = vals[0];
+      else {
+        const [lo, hi] = vals[0].split('..');
+        st.picked[f.key] = { min: lo === '' || lo == null ? null : Number(lo), max: hi === '' || hi == null ? null : Number(hi) };
+      }
+    }
+    st.keyword = p.get('kw') || '';
+    $('#s-keyword').value = st.keyword;
+    return true;
+  }
+  function writeHash() {
+    if (!location.hash.startsWith('#search')) return;
+    const p = new URLSearchParams();
+    for (const f of st.fields) {
+      if (!active(f)) continue;
+      const v = st.picked[f.key];
+      if (f.type === 'choice') v.forEach((x) => p.append(f.key, x));
+      else if (f.type === 'text') p.append(f.key, v);
+      else p.append(f.key, `${v.min ?? ''}..${v.max ?? ''}`);
+    }
+    if (st.keyword) p.set('kw', st.keyword);
+    const h = `#search${p.toString() ? `?${p}` : ''}`;
+    if (location.hash !== h) { writing = true; history.replaceState(null, '', h); writing = false; }
+  }
+  window.addEventListener('hashchange', () => {
+    if (writing || !st.fields.length) return;
+    if (readHash()) { closeDropdown(); renderCriteria(); run(); }
+  });
 
   function renderChips() {
     const chips = [];
@@ -228,7 +277,7 @@
 
   function sorted() {
     const { key, asc } = st.sort;
-    const get = (r) => (key === 'kyc_status' ? raw(r, '_kyc') : r[key]);
+    const get = (r) => (key === 'kyc_status' ? raw(r, '_kyc') : key === '_qKey' ? (r._qKey ?? -1) : r[key]);
     return [...st.results].sort((a, b) => {
       const x = get(a), y = get(b);
       const c = typeof x === 'number' && typeof y === 'number' ? (Number.isFinite(x) ? x : -1) - (Number.isFinite(y) ? y : -1)
@@ -246,8 +295,9 @@
     $('#s-results tbody').innerHTML = sorted().map((r) => `<tr data-id="${e(r.client_id)}">
       <td>${e(r.client_name)}</td><td>${e(r.region)}</td><td>${e(r.team)}</td><td>${e(r.account_owner)}</td>
       <td class="num">${KYC.fmtMoney(r.annual_budget_usd)}</td>
-      <td><span class="status ${r._done ? 'done' : ''}">${e(raw(r, '_kyc'))}</span></td></tr>`).join('') ||
-      '<tr><td colspan="6" style="color:var(--muted)">No clients match these filters.</td></tr>';
+      <td><span class="status ${r._done ? 'done' : ''}">${e(raw(r, '_kyc'))}</span></td>
+      <td>${e(r._qLabel || '')}</td></tr>`).join('') ||
+      '<tr><td colspan="7" style="color:var(--muted)">No clients match these filters.</td></tr>';
   }
 
   // ---------- export ----------
