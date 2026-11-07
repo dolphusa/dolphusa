@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KYC Client Dashboard</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>KYC Client Dashboard</h1>
+      <p class="sub" id="data-source">Loading client data…</p>
+    </div>
+    <div class="topbar-actions">
+      <label class="btn" for="file-input">Load CSV…</label>
+      <input type="file" id="file-input" accept=".csv,text/csv" hidden>
+      <button class="btn" id="theme-toggle" type="button" aria-label="Toggle dark mode">Theme</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Section 1: KYC coverage -->
+    <section class="card" aria-labelledby="s1-title">
+      <div class="section-head">
+        <div>
+          <h2 id="s1-title">KYC coverage</h2>
+          <p class="sub">Completed vs. not completed across the current book, with completions split by the quarter they were completed.</p>
+        </div>
+        <div class="filter-chips" id="active-filters" aria-live="polite"></div>
+      </div>
+
+      <div class="kpis" id="kpis"></div>
+
+      <div class="s1-grid">
+        <div class="pie-panel">
+          <h3 id="pie-title">All clients</h3>
+          <div class="pie-wrap">
+            <svg id="pie" viewBox="0 0 320 320" role="img" aria-labelledby="pie-title"></svg>
+            <div class="tooltip" id="tooltip" role="status" hidden></div>
+          </div>
+          <table class="legend" id="legend" aria-label="KYC status breakdown"></table>
+          <p class="hint">Click a slice or legend row to list those clients below.</p>
+        </div>
+
+        <div class="breakdowns">
+          <div class="breakdown" id="bd-region"></div>
+          <div class="breakdown" id="bd-team"></div>
+          <p class="hint">Click a region and/or team to filter the chart. Click again to clear.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 2: client lookup -->
+    <section class="card" aria-labelledby="s2-title">
+      <div class="section-head">
+        <div>
+          <h2 id="s2-title">Client lookup</h2>
+          <p class="sub" id="dir-sub"></p>
+        </div>
+        <input type="search" id="search" placeholder="Search client, owner, answer…" aria-label="Search clients">
+      </div>
+      <div class="table-scroll">
+        <table class="clients" id="clients">
+          <thead>
+            <tr>
+              <th data-sort="client_name">Client</th>
+              <th data-sort="region">Region</th>
+              <th data-sort="team">Team</th>
+              <th data-sort="account_owner">Owner</th>
+              <th data-sort="annual_budget_usd" class="num">Budget</th>
+              <th data-sort="kyc_status">KYC</th>
+              <th data-sort="kyc_completed_date">Completed</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="detail">
+    <form method="dialog"><button class="close" aria-label="Close">×</button></form>
+    <div id="detail-body"></div>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
