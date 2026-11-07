@@ -52,6 +52,16 @@
     return edges;
   }
 
+  const edgeCache = new Map();
+  function bookEdges(key) {
+    if (!edgeCache.has(key)) {
+      const vals = KYC.rows.filter((r) => r._done)
+        .map((r) => KYC.toNum(key === 'annual_budget_usd' ? r.annual_budget_usd : r._raw[key])).filter(Number.isFinite);
+      edgeCache.set(key, vals.length ? edgesFor(vals) : [0, 1]);
+    }
+    return edgeCache.get(key);
+  }
+
   // ---------- distributions ----------
   // Returns [{ label, n, budget, link }] for one question over the given rows.
   function distribution(key, rows) {
@@ -60,9 +70,11 @@
     if (numeric) {
       const vals = answered.map((r) => KYC.toNum(key === 'annual_budget_usd' ? r.annual_budget_usd : r._raw[key])).filter(Number.isFinite);
       if (!vals.length) return { items: [], answered: 0 };
-      const edges = edgesFor(vals);
+      // Bands come from the whole book, so they stay the same when region/team filters change.
+      const edges = bookEdges(key);
       // Whole-number data reads better as inclusive ranges: "2–3" rather than "2–4" for [2, 4).
-      const ints = !isMoney(key) && vals.every(Number.isInteger) && edges.every(Number.isInteger);
+      const ints = !isMoney(key) && edges.every(Number.isInteger) && edges[edges.length - 1] - edges[0] > 0
+        && KYC.rows.every((r) => { const v = KYC.toNum(r._raw[key]); return !Number.isFinite(v) || Number.isInteger(v); });
       const label = (lo, hi) => (!ints ? `${fmtVal(key, lo)}–${fmtVal(key, hi)}`
         : hi - 1 === lo ? fmtVal(key, lo) : `${fmtVal(key, lo)}–${fmtVal(key, hi - 1)}`);
       const items = edges.slice(0, -1).map((lo, i) => ({ lo, hi: edges[i + 1], label: label(lo, edges[i + 1]), n: 0, budget: 0 }));
@@ -73,9 +85,6 @@
         if (i < 0) i = items.length - 1;
         items[i].n++; items[i].budget += budgetOf(r);
       }
-      // trim empty bins at either end
-      while (items.length > 1 && !items[0].n) items.shift();
-      while (items.length > 1 && !items[items.length - 1].n) items.pop();
       items.forEach((it) => { it.link = [[key, `${it.lo}..${it.hi - 1e-6}`]]; });
       return { items, answered: vals.length, ordered: true };
     }
@@ -169,6 +178,10 @@
     $('#m-budget-cap').textContent = `${st.measure === 'budget' ? 'Total budget' : 'Clients'} by annual budget band · ${caption(bd, done.length).replace(' answered', ' with a budget')}`;
     $('#m-budget').innerHTML = hbars('annual_budget_usd', bd);
 
+    // Region / team summary tables (same cross-filter behaviour as KYC coverage)
+    renderBreakdown('region', 'Region', '#m-bd-region');
+    renderBreakdown('team', 'Team', '#m-bd-team');
+
     // Preset questions
     $('#m-presets').innerHTML = presetKeys().map((k) => {
       const d = distribution(k, done);
@@ -183,6 +196,38 @@
       $('#m-explore-cap').textContent = `${KYC.prettyKey(st.question)} · ${caption(d, done.length)}`;
       $('#m-explore').innerHTML = hbars(st.question, d, st.sort);
     }
+  }
+
+  // One row per region (or team) with KYC-completed clients, budget, average and share of budget.
+  // Counts respect the *other* dimension's selection, like the KYC coverage tables.
+  function renderBreakdown(dim, title, sel) {
+    const other = dim === 'region' ? 'team' : 'region';
+    const base = KYC.rows.filter((r) => r._done && (!st.scope[other] || r[other] === st.scope[other]));
+    const groups = new Map();
+    for (const r of KYC.rows) if (!groups.has(r[dim])) groups.set(r[dim], { n: 0, budget: 0, withBudget: 0 });
+    for (const r of base) {
+      const g = groups.get(r[dim]);
+      g.n++;
+      if (Number.isFinite(r.annual_budget_usd)) { g.budget += r.annual_budget_usd; g.withBudget++; }
+    }
+    const totalBudget = [...groups.values()].reduce((a, g) => a + g.budget, 0);
+    const totalN = [...groups.values()].reduce((a, g) => a + g.n, 0);
+    const key = st.measure === 'budget' ? 'budget' : 'n';
+    const list = [...groups].sort((a, b) => b[1][key] - a[1][key] || a[0].localeCompare(b[0]));
+    const share = (g) => (st.measure === 'budget' ? [g.budget, totalBudget] : [g.n, totalN]);
+    $(sel).innerHTML = `<h3>By ${title.toLowerCase()}</h3>
+      <table class="bd-table"><thead><tr>
+        <th>${title}</th><th class="num">KYC’d clients</th><th class="num">Total budget</th>
+        <th class="num col-budget">Avg budget</th><th class="num">Share of ${st.measure === 'budget' ? 'budget' : 'clients'}</th></tr></thead><tbody>
+      ${list.map(([name, g]) => {
+        const [v, t] = share(g);
+        const on = st.scope[dim] === name;
+        return `<tr data-dim="${dim}" data-val="${e(name)}" tabindex="0" class="${on ? 'sel' : ''} ${g.n ? '' : 'empty'}" aria-pressed="${on}">
+          <td>${e(name)}</td><td class="num">${KYC.fmtInt(g.n)}</td><td class="num">${KYC.fmtMoney(g.budget)}</td>
+          <td class="num col-budget">${g.withBudget ? KYC.fmtMoney(Math.round(g.budget / g.withBudget)) : '–'}</td>
+          <td class="num"><span class="rate"><span class="bar"><span style="width:${t ? (v / t) * 100 : 0}%"></span></span>${KYC.fmtPct(v, t)}</span></td>
+        </tr>`;
+      }).join('')}</tbody></table>`;
   }
 
   function setupQuestions() {
@@ -230,7 +275,7 @@
   $('#m-question').addEventListener('change', (ev) => { st.question = ev.target.value; render(); });
   $('#m-sort').addEventListener('change', (ev) => { st.sort = ev.target.value; render(); });
 
-  document.addEventListener('kyc:data', setupQuestions);
+  document.addEventListener('kyc:data', () => { edgeCache.clear(); setupQuestions(); });
   document.addEventListener('kyc:overview', (ev) => {
     st.rows = ev.detail.rows;
     st.scope = { region: ev.detail.region, team: ev.detail.team };

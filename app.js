@@ -137,12 +137,12 @@
   }
 
   function renderChips() {
-    const el = $('#active-filters');
+    const els = document.querySelectorAll('#active-filters, #m-chips'); // KYC coverage + Market overview
     const chips = [];
     if (state.region) chips.push(`<button class="chip" data-clear="region">Region: ${esc(state.region)}</button>`);
     if (state.team) chips.push(`<button class="chip" data-clear="team">Team: ${esc(state.team)}</button>`);
     if (chips.length > 1) chips.push('<button class="chip clear" data-clear="all">Clear all</button>');
-    el.innerHTML = chips.join('');
+    els.forEach((el) => { el.innerHTML = chips.join(''); });
   }
 
   function renderKpis(rows) {

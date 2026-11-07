@@ -65,18 +65,26 @@
           <h2 id="m-title">Market overview</h2>
           <p class="sub" id="m-sub"></p>
         </div>
-        <div class="seg" role="group" aria-label="Measure">
-          <button type="button" data-measure="clients" aria-pressed="true">Clients</button>
-          <button type="button" data-measure="budget" aria-pressed="false">Budget</button>
+        <div class="head-actions">
+          <div class="filter-chips" id="m-chips" aria-live="polite"></div>
+          <div class="seg" role="group" aria-label="Measure">
+            <button type="button" data-measure="clients" aria-pressed="true">Clients</button>
+            <button type="button" data-measure="budget" aria-pressed="false">Budget</button>
+          </div>
         </div>
       </div>
       <div class="kpis" id="m-kpis"></div>
 
-      <div class="m-grid">
-        <div class="m-card m-wide">
-          <h3>Budget distribution</h3>
+      <div class="s1-grid">
+        <div>
+          <h3 id="m-budget-title">Budget distribution</h3>
           <p class="sub m-cap" id="m-budget-cap"></p>
           <div class="hbars" id="m-budget"></div>
+        </div>
+        <div class="breakdowns">
+          <div class="breakdown" id="m-bd-region"></div>
+          <div class="breakdown" id="m-bd-team"></div>
+          <p class="hint">KYC-completed clients only. Click a region and/or team to filter the whole overview. Click again to clear.</p>
         </div>
       </div>
 

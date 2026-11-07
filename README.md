@@ -34,7 +34,10 @@ and the `kyc:data` event fires whenever data is (re)loaded.
 
 **2. Market overview**: answers and budget of **KYC-completed clients** (only they have answers). It follows the region/team selection above.
 - Tiles: total budget of KYC-completed clients (and its share of the book's budget), average and median budget, and the budget of clients not yet KYC'd.
-- **Budget distribution** in bands ($10K–25K, 25K–50K, …).
+- Laid out like KYC coverage: **budget distribution** chart on the left, and **by region** and **by team** summary tables on the right
+  (KYC'd clients, total budget, average budget, share of clients or budget). Clicking a row filters the whole overview, and the
+  selection is shared with KYC coverage.
+- Budget bands, and the bands for number questions, are set from the whole book, so they don't change when you filter.
 - **Key questions**: small charts of preselected questions (`PRESET_QUESTIONS` at the top of `market.js`).
 - **Explore any question**: pick any KYC question. Number questions are grouped into bands automatically.
 - A **Clients / Budget** toggle switches every chart between client counts and total budget.
