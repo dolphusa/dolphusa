@@ -12,6 +12,10 @@
       <h1>KYC Client Dashboard</h1>
       <p class="sub" id="data-source">Loading client data…</p>
     </div>
+    <nav class="tabs" aria-label="Dashboard tabs">
+      <a href="#overview">Overview</a>
+      <a href="#search">Client search</a>
+    </nav>
     <div class="topbar-actions">
       <label class="btn" for="file-input">Load CSV…</label>
       <input type="file" id="file-input" accept=".csv,text/csv" hidden>
@@ -19,7 +23,7 @@
     </div>
   </header>
 
-  <main>
+  <main id="tab-overview" class="tab-panel">
     <!-- Section 1: KYC coverage -->
     <section class="card" aria-labelledby="s1-title">
       <div class="section-head">
@@ -79,11 +83,57 @@
     </section>
   </main>
 
+  <!-- Tab 2: search clients by KYC answers -->
+  <main id="tab-search" class="tab-panel" hidden>
+    <section class="card" aria-labelledby="sc-title">
+      <div class="section-head">
+        <div>
+          <h2 id="sc-title">Search by criteria</h2>
+          <p class="sub">Choose answers to filter clients. Answers you pick under the same question are combined with OR; different questions are combined with AND. Counts show how many clients each option would add.</p>
+        </div>
+        <button class="btn" id="s-reset" type="button">Reset criteria</button>
+      </div>
+      <div class="criteria-basic">
+        <label>Keyword<input type="search" id="s-keyword" placeholder="Any field contains…"></label>
+        <label>Min budget ($)<input type="number" id="s-min" min="0" step="1000" placeholder="0"></label>
+        <label>Max budget ($)<input type="number" id="s-max" min="0" step="1000" placeholder="No limit"></label>
+      </div>
+      <div class="criteria" id="s-criteria"></div>
+    </section>
+
+    <section class="card" aria-labelledby="sr-title">
+      <div class="section-head">
+        <div>
+          <h2 id="sr-title">Results</h2>
+          <div class="filter-chips" id="s-chips" aria-live="polite"></div>
+        </div>
+        <button class="btn primary" id="s-export" type="button">Export CSV</button>
+      </div>
+      <div class="kpis kpis-3" id="s-summary" aria-live="polite"></div>
+      <div class="table-scroll">
+        <table class="clients" id="s-results">
+          <thead>
+            <tr>
+              <th data-sort="client_name">Client</th>
+              <th data-sort="region">Region</th>
+              <th data-sort="team">Team</th>
+              <th data-sort="account_owner">Owner</th>
+              <th data-sort="annual_budget_usd" class="num">Budget</th>
+              <th data-sort="kyc_status">KYC</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
   <dialog id="detail">
     <form method="dialog"><button class="close" aria-label="Close">×</button></form>
     <div id="detail-body"></div>
   </dialog>
 
   <script src="app.js"></script>
+  <script src="search.js"></script>
 </body>
 </html>

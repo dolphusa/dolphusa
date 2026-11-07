@@ -44,6 +44,7 @@
     }
     row.push(f); if (row.some((v) => v !== '')) out.push(row);
     const head = (out.shift() || []).map((h) => h.trim().toLowerCase().replace(/\s+/g, '_'));
+    state.headers = head;
     return out.map((r) => Object.fromEntries(head.map((h, i) => [h, (r[i] ?? '').trim()])));
   }
 
@@ -237,7 +238,7 @@
       return asc ? c : -c;
     });
     $('#dir-sub').textContent = `${fmtInt(list.length)} of ${fmtInt(state.rows.length)} clients · ${scopeLabel()}${slice ? ` · ${slice.label}` : ''}. Click a client for budget and KYC answers.`;
-    document.querySelectorAll('table.clients th').forEach((th) => {
+    document.querySelectorAll('#clients th').forEach((th) => {
       th.classList.toggle('sorted', th.dataset.sort === key);
       th.classList.toggle('asc', th.dataset.sort === key && asc);
     });
@@ -277,19 +278,19 @@
     if (bd) { const { dim, val } = bd.dataset; state[dim] = state[dim] === val ? null : val; return render(); }
     const sl = e.target.closest('#pie path, #legend tr[data-key]');
     if (sl) return toggleSlice(sl.dataset.key);
-    const chip = e.target.closest('.chip');
+    const chip = e.target.closest('.chip[data-clear]');
     if (chip) {
       const k = chip.dataset.clear;
       if (k === 'all') { state.region = state.team = state.slice = null; } else state[k] = null;
       return render();
     }
-    const th = e.target.closest('table.clients th');
+    const th = e.target.closest('#clients th');
     if (th) {
       const k = th.dataset.sort;
       state.sort = { key: k, asc: state.sort.key === k ? !state.sort.asc : k !== 'annual_budget_usd' };
       return renderTable(filtered());
     }
-    const tr = e.target.closest('#clients tbody tr[data-id]');
+    const tr = e.target.closest('#clients tbody tr[data-id], #s-results tbody tr[data-id]');
     if (tr) showDetail(tr.dataset.id);
   });
   document.addEventListener('keydown', (e) => {
@@ -318,7 +319,30 @@
     buildSliceDefs();
     $('#data-source').textContent = `${fmtInt(state.rows.length)} clients · source: ${source}`;
     render();
+    document.dispatchEvent(new CustomEvent('kyc:data'));
   }
+
+  // ---------- tabs (hash routing: #overview, #search) ----------
+  function route() {
+    const tab = (location.hash.slice(1) || 'overview');
+    const known = [...document.querySelectorAll('.tab-panel')].map((el) => el.id.replace('tab-', ''));
+    const active = known.includes(tab) ? tab : 'overview';
+    document.querySelectorAll('.tab-panel').forEach((el) => { el.hidden = el.id !== `tab-${active}`; });
+    document.querySelectorAll('.tabs a').forEach((a) => {
+      const on = a.getAttribute('href') === `#${active}`;
+      a.classList.toggle('active', on);
+      if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+    });
+  }
+  window.addEventListener('hashchange', route);
+  route();
+
+  // Shared API for other tabs (search.js).
+  window.KYC = {
+    get rows() { return state.rows; },
+    get headers() { return state.headers || []; },
+    esc, fmtInt, fmtMoney, prettyKey, showDetail, NOT_DONE,
+  };
 
   fetch('data/clients.csv')
     .then((r) => { if (!r.ok) throw new Error(r.status); return r.text(); })
