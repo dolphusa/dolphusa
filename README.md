@@ -50,8 +50,11 @@ with an **Open KYC follow-up →** button that carries that selection over.
 **3. Market penetration overview**: our revenue compared with client budgets. It follows the region/team selection.
 - Tiles: revenue this year (vs last year), revenue growth, **share of wallet** (our revenue ÷ client annual budget,
   counting only clients with a budget) and untapped wallet (budget − our revenue), plus how many clients buy from us.
-- **By segment** (left): pick any KYC question or budget band and see each answer's clients, revenue, growth and share of wallet.
-  Click a row to open those clients in Client search.
+- **By segment** (left): pick any KYC question or budget band. A bar chart per answer, with three tabs:
+  - **Revenue & headroom**: stacked bar of our revenue plus headroom (client budget not yet won). The full bar is the clients' total budget.
+  - **Per client & headroom**: the same, averaged per client with a budget.
+  - **Growth rate**: bars either side of zero, this year vs last year ("New" = no revenue last year).
+  Rows stay in the same order across tabs. Hover a bar for all metrics, or click it to open those clients in Client search.
 - Summary tables (right): **by region**, **by team** (shared filter with the rest of the overview) and **by product**
   (clients buying it and % of clients, revenue, growth, share of our revenue). Click a product to see every number in this
   section for that product only.

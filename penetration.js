@@ -12,19 +12,19 @@
 
   const $ = (s) => document.querySelector(s);
   const e = (s) => KYC.esc(s);
-  const st = { product: null, question: null, rows: [], scope: { region: null, team: null } };
+  const st = { metric: 'total', product: null, question: null, rows: [], scope: { region: null, team: null } };
 
   // ---------- metrics ----------
   function metrics(rows, product = st.product) {
-    let cy = 0, py = 0, wallet = 0, cyInWallet = 0, active = 0;
+    let cy = 0, py = 0, wallet = 0, cyInWallet = 0, active = 0, withBudget = 0;
     for (const r of rows) {
       const c = KYC.revOf(r, 'cy', product), p = KYC.revOf(r, 'py', product);
       cy += c; py += p;
       if (c > 0) active++;
-      if (Number.isFinite(r.annual_budget_usd) && r.annual_budget_usd > 0) { wallet += r.annual_budget_usd; cyInWallet += c; }
+      if (Number.isFinite(r.annual_budget_usd) && r.annual_budget_usd > 0) { wallet += r.annual_budget_usd; cyInWallet += c; withBudget++; }
     }
     return {
-      n: rows.length, cy, py, active, wallet, cyInWallet,
+      n: rows.length, cy, py, active, wallet, cyInWallet, withBudget,
       sow: wallet ? cyInWallet / wallet : null,
       growth: py ? (cy - py) / py : cy ? 'new' : null,
     };
@@ -83,6 +83,11 @@
       `<div class="kpi"><div class="label">${e(l)}</div><div class="value">${v}</div><div class="note">${e(n)}</div></div>`).join('');
   }
 
+  // Left side: one chart per segment question, with three metric tabs.
+  //   total  — stacked bar: our revenue + headroom (client budget not yet won) = wallet
+  //   avg    — the same per client (÷ clients with a budget)
+  //   growth — diverging bar around 0: this year vs last year
+  // Rows keep the same order in every tab so segments can be compared.
   function renderSegments() {
     const key = st.question;
     if (!key) return;
@@ -94,25 +99,67 @@
       const rows = rest.flatMap((x) => x.rows || []);
       items.push({ label: `Other (${rest.length} answers)`, rows, m: metrics(rows), link: null });
     }
-    const maxSow = Math.max(0, ...items.map((it) => it.m.sow || 0));
     const answeredRows = items.flatMap((it) => it.rows || []);
     const all = metrics(st.rows);
     const ans = metrics(answeredRows);
     const unanswered = st.rows.length - answeredRows.length;
-    $('#p-seg-cap').textContent = key === 'annual_budget_usd'
-      ? `${KYC.fmtInt(answeredRows.length)} clients with a budget, in budget bands.`
-      : `${KYC.fmtInt(answeredRows.length)} of ${KYC.fmtInt(st.rows.length)} clients answered this question${unanswered ? ` (the other ${KYC.fmtInt(unanswered)}, ${KYC.fmtMoney(all.cy - ans.cy)} revenue, aren't shown)` : ''}.`;
-    const row = (it, isTotal) => {
-      const href = it.link ? KYC.searchLink(it.link, st.scope) : null;
-      const tip = `${it.label}: ${KYC.fmtInt(it.m.n)} clients · revenue ${KYC.fmtMoney(it.m.cy)} (last year ${KYC.fmtMoney(it.m.py)}, ${growthText(it.m.growth)}) · share of wallet ${it.m.sow == null ? '–' : pct(it.m.sow, 1)} of ${KYC.fmtMoney(it.m.wallet)}`;
-      return `<tr class="${isTotal ? 'total' : ''}" ${href ? `data-href="${e(href)}" tabindex="0"` : ''} title="${e(tip)}">
-        <td class="lbl">${e(it.label)}</td><td class="num col-sm-hide">${KYC.fmtInt(it.m.n)}</td><td class="num">${KYC.fmtMoney(it.m.cy)}</td>
-        <td class="num">${growthHTML(it.m.growth)}</td><td class="num">${sowBar(it.m.sow, isTotal ? Math.max(maxSow, it.m.sow || 0) : maxSow)}</td></tr>`;
-    };
-    $('#p-seg').innerHTML = `<thead><tr><th>${e(key === 'annual_budget_usd' ? 'Budget band' : KYC.prettyKey(key))}</th>
-      <th class="num col-sm-hide">Clients</th><th class="num">Revenue</th><th class="num">Growth</th><th class="num">Share of wallet</th></tr></thead>
-      <tbody>${items.length ? items.map((it) => row(it)).join('') : '<tr><td colspan="5" class="sub">No answers yet.</td></tr>'}</tbody>
-      <tfoot>${row({ label: key === 'annual_budget_usd' ? 'Total' : 'Total answered', m: ans }, true)}</tfoot>`;
+    const tipOf = (it) => `${it.label}: ${KYC.fmtInt(it.m.n)} clients · revenue ${KYC.fmtMoney(it.m.cy)} (last year ${KYC.fmtMoney(it.m.py)}, ${growthText(it.m.growth)}) · share of wallet ${it.m.sow == null ? '–' : pct(it.m.sow, 1)} of ${KYC.fmtMoney(it.m.wallet)} budget · headroom ${KYC.fmtMoney(Math.max(0, it.m.wallet - it.m.cyInWallet))}`;
+
+    let bars;
+    const metric = st.metric;
+    if (metric === 'growth') {
+      $('#p-legend').innerHTML = `<span class="lg"><i class="sw up"></i>Growth</span><span class="lg"><i class="sw down"></i>Decline</span>
+        <span class="lg muted">“New” = no revenue last year</span>`;
+      const gs = items.map((it) => (typeof it.m.growth === 'number' ? it.m.growth : 0));
+      const hasNeg = gs.some((g) => g < 0);
+      const max = Math.max(...gs.map(Math.abs), 0.0001);
+      const zero = hasNeg ? 50 : 0; // % position of the zero line
+      const span = hasNeg ? 50 : 100;
+      bars = items.map((it) => {
+        const g = it.m.growth;
+        const w = typeof g === 'number' ? (Math.abs(g) / max) * span : 0;
+        const left = typeof g === 'number' && g < 0 ? zero - w : zero;
+        return barRow(it, tipOf(it), `<span class="zero" style="left:${zero}%"></span>
+          ${typeof g === 'number' ? `<span class="seg-fill ${g < 0 ? 'neg' : 'pos'}" style="left:${left}%;width:${w}%"></span>` : ''}`,
+          growthHTML(g));
+      });
+    } else {
+      $('#p-legend').innerHTML = `<span class="lg"><i class="sw rev"></i>Our revenue</span><span class="lg"><i class="sw head"></i>Headroom (budget not yet won)</span>`;
+      const per = metric === 'avg';
+      const vals = items.map((it) => {
+        const n = it.m.withBudget || 0;
+        const rev = it.m.cyInWallet, head = Math.max(0, it.m.wallet - it.m.cyInWallet);
+        return per ? { rev: n ? rev / n : 0, head: n ? head / n : 0 } : { rev, head };
+      });
+      const max = Math.max(...vals.map((v) => v.rev + v.head), 1);
+      bars = items.map((it, i) => {
+        const v = vals[i];
+        const value = `${KYC.fmtMoney(Math.round(v.rev))} <span class="hb-pct">of ${KYC.fmtMoney(Math.round(v.rev + v.head))}</span>`;
+        return barRow(it, tipOf(it), `<span class="stack">
+            <span class="seg-rev" style="width:${(v.rev / max) * 100}%"></span><span class="seg-head" style="width:${(v.head / max) * 100}%"></span>
+          </span>`, value);
+      });
+    }
+    $('#p-seg').innerHTML = items.length ? bars.join('') : '<p class="sub">No answers yet.</p>';
+
+    const totalLine = metric === 'growth'
+      ? `Overall growth ${growthText(ans.growth)}`
+      : metric === 'avg'
+        ? `Overall ${KYC.fmtMoney(Math.round(ans.withBudget ? ans.cyInWallet / ans.withBudget : 0))} per client, of ${KYC.fmtMoney(Math.round(ans.withBudget ? ans.wallet / ans.withBudget : 0))} budget`
+        : `Total ${KYC.fmtMoney(ans.cyInWallet)} of ${KYC.fmtMoney(ans.wallet)} budget (${ans.sow == null ? '–' : pct(ans.sow, 1)} share of wallet)`;
+    const scopeNote = key === 'annual_budget_usd'
+      ? `${KYC.fmtInt(answeredRows.length)} clients with a budget.`
+      : `${KYC.fmtInt(answeredRows.length)} of ${KYC.fmtInt(st.rows.length)} clients answered${unanswered ? `; the other ${KYC.fmtInt(unanswered)} (${KYC.fmtMoney(all.cy - ans.cy)} revenue) aren't shown` : ''}.`;
+    $('#p-seg-cap').textContent = `${totalLine}. ${scopeNote}${metric !== 'growth' ? ' Headroom uses clients with a budget only.' : ''} Hover for all metrics; click a bar to open those clients.`;
+  }
+
+  function barRow(it, tip, track, value) {
+    const href = it.link ? KYC.searchLink(it.link, st.scope) : null;
+    const tag = href ? 'a' : 'div';
+    return `<${tag} class="pbar" role="listitem" ${href ? `href="${e(href)}"` : ''} data-tip="${e(tip)}" aria-label="${e(tip)}">
+      <span class="hb-label" title="${e(it.label)}">${e(it.label)}</span>
+      <span class="pb-track">${track}</span>
+      <span class="hb-val">${value}</span></${tag}>`;
   }
 
   // Region / team: same cross-filter behaviour as the other overview tables.
@@ -167,18 +214,45 @@
 
   // ---------- events ----------
   $('#p-question').addEventListener('change', (ev) => { st.question = ev.target.value; render(); });
+  document.querySelector('.p-tabs').addEventListener('click', (ev) => {
+    const b = ev.target.closest('button[data-pmetric]');
+    if (!b) return;
+    st.metric = b.dataset.pmetric;
+    document.querySelectorAll('.p-tabs button').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
+    renderSegments();
+  });
+
+  // Tooltip for the segment chart
+  const tip = document.createElement('div');
+  tip.className = 'tooltip fixed';
+  tip.hidden = true;
+  document.body.appendChild(tip);
+  const chart = $('#p-seg');
+  const showTip = (ev) => {
+    const bar = ev.target.closest('.pbar');
+    if (!bar) { tip.hidden = true; return; }
+    tip.textContent = bar.dataset.tip;
+    tip.hidden = false;
+    const r = bar.getBoundingClientRect();
+    const x = ev.clientX ?? r.left, y = ev.clientY ?? r.bottom;
+    tip.style.left = `${Math.max(8, Math.min(x + 12, window.innerWidth - tip.offsetWidth - 8))}px`;
+    tip.style.top = `${y + 14}px`;
+  };
+  chart.addEventListener('mousemove', showTip);
+  chart.addEventListener('focusin', showTip);
+  chart.addEventListener('mouseleave', () => { tip.hidden = true; });
+  chart.addEventListener('focusout', () => { tip.hidden = true; });
+  window.addEventListener('scroll', () => { tip.hidden = true; }, { passive: true });
   const section = $('#p-title').closest('section');
   section.addEventListener('click', (ev) => {
     const prod = ev.target.closest('tr[data-product]');
     if (prod) { st.product = st.product === prod.dataset.product ? null : prod.dataset.product; return render(); }
     const chip = ev.target.closest('.chip[data-pclear], .chip.clear');
     if (chip) { st.product = null; if (chip.dataset.pclear) render(); return; } // "Clear all" re-renders via app.js
-    const seg = ev.target.closest('#p-seg tr[data-href]');
-    if (seg) location.hash = seg.dataset.href;
   });
   section.addEventListener('keydown', (ev) => {
     if (ev.key !== 'Enter' && ev.key !== ' ') return;
-    const t = ev.target.closest('tr[data-product], #p-seg tr[data-href]');
+    const t = ev.target.closest('tr[data-product]');
     if (t) { ev.preventDefault(); t.click(); }
   });
 

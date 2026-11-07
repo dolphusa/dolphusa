@@ -122,8 +122,14 @@
               <h3>By segment</h3>
               <label>Segment by <select id="p-question"></select></label>
             </div>
+            <div class="seg p-tabs" role="tablist" aria-label="Metric">
+              <button type="button" role="tab" data-pmetric="total" aria-selected="true">Revenue &amp; headroom</button>
+              <button type="button" role="tab" data-pmetric="avg" aria-selected="false">Per client &amp; headroom</button>
+              <button type="button" role="tab" data-pmetric="growth" aria-selected="false">Growth rate</button>
+            </div>
+            <div class="p-legend" id="p-legend"></div>
+            <div class="pchart" id="p-seg" role="list"></div>
             <p class="sub m-cap" id="p-seg-cap"></p>
-            <div class="table-scroll-x"><table class="pen-table" id="p-seg"></table></div>
           </div>
           <div class="breakdowns">
             <div class="breakdown" id="p-bd-region"></div>

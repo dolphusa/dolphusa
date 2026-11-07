@@ -303,13 +303,39 @@ a.hbar:hover, a.hbar:focus-visible { background: var(--hover); }
 .delta.down { color: var(--bad); }
 .kpi .value .delta { font-size: inherit; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-table.pen-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.pen-table th { text-align: left; color: var(--muted); font-weight: 500; font-size: 12px; padding: 4px 8px; border-bottom: 1px solid var(--axis); white-space: nowrap; }
-.pen-table td { padding: 7px 8px; border-bottom: 1px solid var(--grid); }
-.pen-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.pen-table td.lbl { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pen-table tbody tr[data-href] { cursor: pointer; }
-.pen-table tbody tr[data-href]:hover, .pen-table tbody tr[data-href]:focus-visible { background: var(--hover); }
-.pen-table tfoot td { font-weight: 600; border-top: 1px solid var(--axis); border-bottom: none; }
 #p-sub code { font-size: 12px; background: var(--hover); padding: 1px 4px; border-radius: 4px; }
-@media (max-width: 560px) { .pen-table .bar, .pen-table .col-sm-hide { display: none; } }
+
+/* Penetration segment chart */
+:root { --headroom: #e1e0d9; --neg: #e34948; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --headroom: #383835; --neg: #e66767; } }
+:root[data-theme="dark"] { --headroom: #383835; --neg: #e66767; }
+.p-tabs { display: flex; width: 100%; margin: 4px 0 8px; }
+.p-tabs button { flex: 1 1 0; padding: 6px 8px; }
+.p-tabs button[aria-selected="true"] { background: var(--hover); color: var(--accent-ink); font-weight: 600; }
+.p-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--ink-2); margin-bottom: 6px; }
+.p-legend .lg { display: inline-flex; align-items: center; gap: 6px; }
+.p-legend .muted { color: var(--muted); }
+.p-legend .sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.sw.rev, .sw.up { background: var(--accent); }
+.sw.head { background: var(--headroom); box-shadow: inset 0 0 0 1px var(--axis); }
+.sw.down { background: var(--neg); }
+.pchart { display: grid; gap: 2px; }
+.pbar {
+  display: grid; grid-template-columns: minmax(90px, min(36%, 180px)) minmax(60px, 1fr) auto; align-items: center; gap: 10px;
+  padding: 5px 6px; border-radius: 4px; color: var(--ink); text-decoration: none; font-size: 13px;
+}
+a.pbar:hover, a.pbar:focus-visible { background: var(--hover); }
+.pb-track { position: relative; height: 14px; display: block; }
+.pb-track .stack { display: flex; height: 100%; gap: 2px; }
+.seg-rev { background: var(--accent); border-radius: 4px 0 0 4px; min-width: 0; }
+.seg-head { background: var(--headroom); border-radius: 0 4px 4px 0; min-width: 0; }
+.seg-rev:only-child, .seg-head[style*="width:0%"] { border-radius: 4px; }
+.pb-track .zero { position: absolute; top: -3px; bottom: -3px; width: 1px; background: var(--axis); }
+.pb-track .seg-fill { position: absolute; top: 0; bottom: 0; min-width: 2px; }
+.seg-fill.pos { background: var(--accent); border-radius: 0 4px 4px 0; }
+.seg-fill.neg { background: var(--neg); border-radius: 4px 0 0 4px; }
+.pbar .hb-val { min-width: 110px; }
+@media (max-width: 560px) {
+  .pbar { grid-template-columns: minmax(0, 34%) minmax(30px, 1fr) auto; gap: 6px; }
+  .pbar .hb-val { min-width: 0; }
+}
