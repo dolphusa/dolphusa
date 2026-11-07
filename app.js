@@ -18,6 +18,7 @@
   const fmtPct = (n, d) => (d ? `${Math.round((n / d) * 100)}%` : '–');
   const fmtMoney = (n) => {
     if (!Number.isFinite(n)) return '–';
+    if (n < 0) return `−${fmtMoney(-n)}`;
     if (n >= 1e6) return `$${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M`;
     if (n >= 1e3) return `$${Math.round(n / 1e3)}K`;
     return `$${n}`;
@@ -45,6 +46,27 @@
     }
     return out;
   }
+
+  // Revenue columns: rev_cy_<product> (current year) and rev_py_<product> (prior year), in USD.
+  function detectProducts(headers) {
+    const slugs = [...new Set(headers.map((h) => /^rev_(?:cy|py)_(.+)$/.exec(h)?.[1]).filter(Boolean))];
+    return slugs.map((slug) => ({
+      slug,
+      label: slug.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+      cy: headers.includes(`rev_cy_${slug}`) ? `rev_cy_${slug}` : null,
+      py: headers.includes(`rev_py_${slug}`) ? `rev_py_${slug}` : null,
+    }));
+  }
+  // Revenue for one client; blank or non-numeric counts as 0 (non-numeric is flagged on the follow-up tab).
+  const revOf = (r, period, product) => {
+    let sum = 0;
+    for (const p of state.products || []) {
+      if (product && p.slug !== product) continue;
+      const v = toNum(r._raw[p[period]]);
+      if (Number.isFinite(v)) sum += v;
+    }
+    return sum;
+  };
 
   // ---------- CSV ----------
   function parseCSV(text) {
@@ -261,6 +283,13 @@
         ${answers.some((k) => r[k]) ? `<dl class="kv">${answers.map((k) => `<dt>${esc(prettyKey(k))}</dt><dd>${esc(r[k] || '–')}</dd>`).join('')}</dl>`
           : '<p class="sub">No answers recorded yet.</p>'}
       </div>
+      ${(state.products || []).length ? `<div class="detail-sec"><h3>Revenue</h3><dl class="kv">
+        ${state.products.map((p) => {
+          const cy = revOf(r, 'cy', p.slug), py = revOf(r, 'py', p.slug);
+          return cy || py ? `<dt>${esc(p.label)}</dt><dd>${fmtMoney(cy)} this year · ${fmtMoney(py)} last year</dd>` : '';
+        }).join('') || '<dt>Total</dt><dd>No revenue recorded</dd>'}
+        ${Number.isFinite(r.annual_budget_usd) && r.annual_budget_usd > 0 ? `<dt>Share of wallet</dt><dd>${fmtPct(revOf(r, 'cy'), r.annual_budget_usd)} of budget</dd>` : ''}
+      </dl></div>` : ''}
       ${r.notes ? `<div class="detail-sec"><h3>Notes</h3><p>${esc(r.notes)}</p></div>` : ''}`;
     $('#detail').showModal();
   }
@@ -316,6 +345,7 @@
   function load(text, source) {
     state.rows = parseCSV(text).map(normalize);
     state.numericCols = detectNumericCols(state.rows, state.headers || []);
+    state.products = detectProducts(state.headers || []);
     state.region = state.team = null;
     buildSliceDefs();
     $('#data-source').textContent = `${fmtInt(state.rows.length)} clients · source: ${source}`;
@@ -344,6 +374,8 @@
     get headers() { return state.headers || []; },
     get numericCols() { return state.numericCols || new Set(); },
     get overview() { return { region: state.region, team: state.team }; },
+    get products() { return state.products || []; },
+    revOf,
     esc, fmtInt, fmtMoney, fmtPct, prettyKey, showDetail, toNum, quarterOf, NOT_DONE,
   };
 

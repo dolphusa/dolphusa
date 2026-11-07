@@ -130,6 +130,11 @@
           issue('Text in a number question', `${KYC.prettyKey(q)} is "${raw[q]}", expected a number`);
         }
       }
+      for (const h of KYC.headers) {
+        if (/^rev_(cy|py)_/.test(h) && raw[h] && !Number.isFinite(KYC.toNum(raw[h]))) {
+          issue('Revenue not a number', `${h} is "${raw[h]}", expected a number`);
+        }
+      }
       if (raw.client_id && idCount.get(raw.client_id) > 1) issue('Possible duplicate', `Client ID ${raw.client_id} appears ${idCount.get(raw.client_id)} times`);
       const twins = (byName.get((raw.client_name || '').toLowerCase().trim()) || []).filter((x) => x !== r);
       if (twins.length) issue('Possible duplicate', `Same name as ${twins.map((x) => x._raw.client_id || '(no ID)').join(', ')}`);

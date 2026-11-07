@@ -47,6 +47,18 @@ and the `kyc:data` event fires whenever data is (re)loaded.
 The bottom of the KYC coverage card shows how many clients need follow-up, for the current region/team selection,
 with an **Open KYC follow-up →** button that carries that selection over.
 
+**3. Market penetration overview**: our revenue compared with client budgets. It follows the region/team selection.
+- Tiles: revenue this year (vs last year), revenue growth, **share of wallet** (our revenue ÷ client annual budget,
+  counting only clients with a budget) and untapped wallet (budget − our revenue), plus how many clients buy from us.
+- **By segment** (left): pick any KYC question or budget band and see each answer's clients, revenue, growth and share of wallet.
+  Click a row to open those clients in Client search.
+- Summary tables (right): **by region**, **by team** (shared filter with the rest of the overview) and **by product**
+  (clients buying it and % of clients, revenue, growth, share of our revenue). Click a product to see every number in this
+  section for that product only.
+- Needs revenue columns, one pair per product: `rev_cy_<product>` (this year) and `rev_py_<product>` (last year), in USD,
+  e.g. `rev_cy_payments`, `rev_py_payments`. Products are detected from the column names. A blank counts as 0, and
+  non-numbers are flagged on the follow-up tab. Without these columns the section explains what to add.
+
 ### KYC follow-up tab (`followup.js`)
 
 Shows who needs action and why. A client can fall into more than one group.
@@ -100,6 +112,7 @@ Filters are generated from the CSV, so new question columns appear automatically
 | `kyc_status` | anything starting with "Complete" counts as completed |
 | `kyc_completed_date` | `YYYY-MM-DD`; sets the completion quarter |
 | `q_*` | each KYC question gets its own column, e.g. `q_primary_objective`. All `q_` columns appear in the client detail. |
+| `rev_cy_<product>`, `rev_py_<product>` | revenue this year / last year per product (USD), used by Market penetration |
 | `notes` | optional |
 
 Header names are case-insensitive, and spaces become `_`.

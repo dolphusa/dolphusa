@@ -77,13 +77,13 @@
         && KYC.rows.every((r) => { const v = KYC.toNum(r._raw[key]); return !Number.isFinite(v) || Number.isInteger(v); });
       const label = (lo, hi) => (!ints ? `${fmtVal(key, lo)}–${fmtVal(key, hi)}`
         : hi - 1 === lo ? fmtVal(key, lo) : `${fmtVal(key, lo)}–${fmtVal(key, hi - 1)}`);
-      const items = edges.slice(0, -1).map((lo, i) => ({ lo, hi: edges[i + 1], label: label(lo, edges[i + 1]), n: 0, budget: 0 }));
+      const items = edges.slice(0, -1).map((lo, i) => ({ lo, hi: edges[i + 1], label: label(lo, edges[i + 1]), n: 0, budget: 0, rows: [] }));
       for (const r of answered) {
         const v = KYC.toNum(key === 'annual_budget_usd' ? r.annual_budget_usd : r._raw[key]);
         if (!Number.isFinite(v)) continue;
         let i = edges.findIndex((x, j) => j > 0 && v < x) - 1;
         if (i < 0) i = items.length - 1;
-        items[i].n++; items[i].budget += budgetOf(r);
+        items[i].n++; items[i].budget += budgetOf(r); items[i].rows.push(r);
       }
       items.forEach((it) => { it.link = [[key, `${it.lo}..${it.hi - 1e-6}`]]; });
       return { items, answered: vals.length, ordered: true };
@@ -91,8 +91,8 @@
     const m = new Map();
     for (const r of answered) {
       const v = r._raw[key];
-      const g = m.get(v) || { label: v, n: 0, budget: 0, link: [[key, v]] };
-      g.n++; g.budget += budgetOf(r);
+      const g = m.get(v) || { label: v, n: 0, budget: 0, link: [[key, v]], rows: [] };
+      g.n++; g.budget += budgetOf(r); g.rows.push(r);
       m.set(v, g);
     }
     return { items: [...m.values()], answered: answered.length, ordered: false };
@@ -111,6 +111,22 @@
     }
     return items;
   }
+
+  // Shared with penetration.js: group rows by the answers of a question (or budget bands).
+  // Items come back in their natural order when the question has one (bands, ANSWER_ORDER).
+  KYC.segment = (key, rows) => {
+    const d = distribution(key, rows);
+    const fixed = d.ordered || !!ANSWER_ORDER[key];
+    const items = fixed && !d.ordered ? sortItems(key, { ...d, items: d.items }, 'label') : d.items;
+    return { items, answered: d.answered, fixed };
+  };
+  KYC.searchLink = (pairs, scope) => {
+    const p = new URLSearchParams();
+    if (scope.region) p.append('region', scope.region);
+    if (scope.team) p.append('team', scope.team);
+    for (const [k, v] of pairs) p.append(k, v);
+    return `#search?${p}`;
+  };
 
   // ---------- rendering ----------
   function hbars(key, d, mode) {

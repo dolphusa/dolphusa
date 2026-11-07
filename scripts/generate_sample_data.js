@@ -75,4 +75,36 @@ notDone[5][col('kyc_completed_date')] = '2026-03-02';       // status/date misma
 data[150][col('client_name')] = data[12][col('client_name')]; // possible duplicate
 data[200][col('kyc_status')] = '';                          // blank status
 
+// Revenue by product: current year (rev_cy_*) and prior year (rev_py_*). Uses its own random
+// generator so the client data above stays the same.
+let seed2 = 7;
+const rnd2 = () => ((seed2 = (seed2 * 1664525 + 1013904223) % 4294967296) / 4294967296);
+const products = ['payments', 'analytics', 'advisory', 'platform'];
+products.forEach((p) => cols.splice(cols.indexOf('notes'), 0, `rev_cy_${p}`, `rev_py_${p}`));
+const r100 = (v) => Math.round(v / 100) * 100;
+data.forEach((row) => {
+  const done = row[col('kyc_status')] === 'Completed';
+  const budget = Number(row[col('annual_budget_usd')]) || 200000;
+  const active = rnd2() < (done ? 0.78 : 0.3);
+  const total = active ? budget * (0.04 + rnd2() * 0.5) : 0;
+  const use = products.map(() => rnd2() < 0.55);
+  if (active && !use.some(Boolean)) use[Math.floor(rnd2() * products.length)] = true;
+  const w = products.map((_, i) => (use[i] ? 0.2 + rnd2() : 0));
+  const wSum = w.reduce((a, b) => a + b, 0) || 1;
+  const rev = [];
+  products.forEach((_, i) => {
+    let cy = r100(total * (w[i] / wSum));
+    let py = 0;
+    if (cy) {
+      const x = rnd2();
+      py = x < 0.15 ? 0 : r100(cy / (0.75 + rnd2() * 0.85)); // 15% new this year; others -25%..+60%
+    } else if (active && rnd2() < 0.06) {
+      py = r100(budget * 0.05 * (0.5 + rnd2())); // churned product
+    }
+    rev.push(cy || '', py || '');
+  });
+  row.splice(col('notes') - rev.length, 0, ...rev);
+});
+data[40][col('rev_cy_payments')] = 'pending'; // a data-quality example
+
 console.log([cols.join(','), ...data.map((r) => r.map(esc).join(','))].join('\n'));

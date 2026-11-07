@@ -104,6 +104,36 @@
       </div>
       <p class="hint">Click any bar to open those clients in Client search.</p>
     </section>
+
+    <!-- Section 3: market penetration (our revenue vs. client budgets) -->
+    <section class="card" aria-labelledby="p-title">
+      <div class="section-head">
+        <div>
+          <h2 id="p-title">Market penetration overview</h2>
+          <p class="sub" id="p-sub"></p>
+        </div>
+        <div class="filter-chips" id="p-chips" aria-live="polite"></div>
+      </div>
+      <div id="p-body">
+        <div class="kpis" id="p-kpis"></div>
+        <div class="s1-grid">
+          <div>
+            <div class="m-explore-head">
+              <h3>By segment</h3>
+              <label>Segment by <select id="p-question"></select></label>
+            </div>
+            <p class="sub m-cap" id="p-seg-cap"></p>
+            <div class="table-scroll-x"><table class="pen-table" id="p-seg"></table></div>
+          </div>
+          <div class="breakdowns">
+            <div class="breakdown" id="p-bd-region"></div>
+            <div class="breakdown" id="p-bd-team"></div>
+            <div class="breakdown" id="p-bd-product"></div>
+            <p class="hint">Click a region, team or product to filter this section (region and team also filter the rest of the overview). Click again to clear.</p>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
 
   <!-- Tab: KYC follow-up (clients needing KYC, KYC refresh, or data fixes) -->
@@ -217,5 +247,6 @@
   <script src="search.js"></script>
   <script src="followup.js"></script>
   <script src="market.js"></script>
+  <script src="penetration.js"></script>
 </body>
 </html>
