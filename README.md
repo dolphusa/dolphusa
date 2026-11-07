@@ -2,17 +2,69 @@
 
 A dependency-free, static dashboard for the sales team to review KYC coverage and look up client details.
 
-## Run it
+## Quick start
 
-```bash
-python3 -m http.server 8000   # then open http://localhost:8000
-```
+No installation needed. Pick one:
 
-It loads `data/clients.csv` on start. You can also click **Load CSV…** to open any export with the same columns
-(the file is read in the browser and is never uploaded).
+| How | Steps | Notes |
+|---|---|---|
+| **Start script** (recommended) | Mac: double-click `start-mac.command`. Windows: double-click `start-windows.bat` | Opens `http://localhost:8000` and always reads the current `data/clients.csv`, so after editing the CSV just refresh the browser. Needs Python 3 (built into macOS; on Windows install it from python.org). Close the window to stop |
+| **Open the file directly** | Double-click `index.html` | Works without Python. Shows the built-in copy of the sample (`data/clients.js`) at first. To see your edits, click **Load CSV…** and pick `data/clients.csv`. The browser remembers the last file you loaded |
+| **Any web server** | `python3 -m http.server 8000` in this folder, then open `http://localhost:8000` | Same as the start script |
 
-> `data/clients.csv` is **fictional sample data** made by `scripts/generate_sample_data.js`.
-> Replace it with your real KYC export. Don't commit real client data to a public repository.
+The CSV is read in the browser and is never uploaded anywhere.
+
+> The included `data/clients.csv` is **fictional sample data** (made by `scripts/generate_sample_data.js`, with a few
+> deliberate data problems so the follow-up tab has something to show). Replace it with your real data.
+> Don't commit real client data to a public repository.
+
+## Editing the data
+
+- `data/clients.csv` is the data. Open it in Excel, Google Sheets or Numbers, edit it, and save it as CSV.
+  The column reference is at the bottom of this file.
+- **Adding questions:** add a column whose name starts with `q_` (e.g. `q_preferred_language`). It appears automatically
+  in Client search, Market overview, Market penetration and the client profile. Number questions are detected automatically.
+- **Adding products:** add two columns, `rev_cy_<product>` and `rev_py_<product>`.
+- **Dates:** use `YYYY-MM-DD` (e.g. `2026-03-04`). Excel sometimes rewrites dates as `3/4/2026`. That still works and is
+  read as month/day (change `DATE_ORDER` in `app.js` to `'DMY'` for day/month). Comma-, semicolon- and tab-separated files are all accepted.
+- After editing, refresh the browser (start script) or use **Load CSV…** (opened directly).
+  To update the built-in copy used when double-clicking `index.html`, run `python3 scripts/csv_to_js.py`.
+- To regenerate fresh sample data: `node scripts/generate_sample_data.js > data/clients.csv` (needs Node.js).
+
+## Settings you can adjust
+
+Each is a constant near the top of its file. Edit, save and refresh.
+
+| Setting | File | Default | What it does |
+|---|---|---|---|
+| `RECENT_QUARTERS` | `app.js` | 5 | Quarters shown as their own pie slice; older ones are grouped as "Earlier" |
+| `DATE_ORDER` | `app.js` | `'MDY'` | How to read ambiguous dates like 03/04/2026 |
+| `REFRESH_AFTER_MONTHS` | `followup.js` | 12 | KYC is "refresh overdue" this long after completion |
+| `DUE_SOON_DAYS` | `followup.js` | 60 | "Due soon" window on the refresh tile |
+| `REQUIRED` | `followup.js` | ID, name, region, team, owner, budget | Fields flagged when blank |
+| `SPELLING_FIELDS` | `followup.js` | region, team, owner, status | Fields checked for "Emea" vs "EMEA" style variants (categorical questions are always checked) |
+| `PRESET_QUESTIONS` | `market.js` | objective, pain point, industry, timeline | The "Key questions" charts on the overview |
+| `ANSWER_ORDER` | `market.js` | decision timeline | Answers listed in a fixed order instead of largest first |
+| `MAX_BARS` / `MAX_ROWS` | `market.js` / `penetration.js` | 12 | More answers than this are grouped as "Other" |
+| `DEFAULT_SEGMENT` | `penetration.js` | `q_industry` | Question shown first in Market penetration |
+| `MAX_CHOICES` | `search.js` | 40 | Questions with more distinct answers get a text box instead of a dropdown |
+| Colours | `styles.css` | | All colours are variables at the top (`--accent`, `--q0`…`--q5` for the pie, etc.), with dark-mode values below them |
+
+## Files
+
+| File | Purpose |
+|---|---|
+| `index.html` | Page layout for all tabs |
+| `styles.css` | All styling (light and dark mode) |
+| `app.js` | Loading the CSV, shared helpers, tabs, Overview §1 (KYC coverage), client profile popup |
+| `market.js` | Overview §2, Market overview |
+| `penetration.js` | Overview §3, Market penetration |
+| `followup.js` | KYC follow-up tab, plus the follow-up strip on the overview |
+| `search.js` | Client search tab |
+| `data/clients.csv` | The data (edit this) |
+| `data/clients.js` | Built-in copy of the data for double-click use (generated by `scripts/csv_to_js.py`) |
+| `scripts/` | Sample-data generator and the CSV → JS helper |
+| `start-mac.command`, `start-windows.bat` | One-click start scripts |
 
 ## Tabs
 

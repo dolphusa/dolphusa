@@ -28,8 +28,8 @@
 
   // ---------- analysis ----------
   const DAY = 86400000;
-  const today = () => { const d = new Date(); return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()); };
-  const parseDate = (s) => (/^\d{4}-\d{2}-\d{2}$/.test(s) ? Date.parse(`${s}T00:00:00Z`) : NaN);
+  const today = () => KYC.todayUTC();
+  const parseDate = (s) => KYC.parseDate(s);
   const addMonths = (t, m) => { const d = new Date(t); d.setUTCMonth(d.getUTCMonth() + m); return d.getTime(); };
   const iso = (t) => new Date(t).toISOString().slice(0, 10);
   const ago = (days) => (days < 60 ? `${days} days ago` : `${Math.floor(days / 30.44)} months ago`);
@@ -92,7 +92,7 @@
         const due = addMonths(t, REFRESH_AFTER_MONTHS);
         if (due < now) {
           cats.add('refresh');
-          details.push(`Last KYC ${dateRaw} (${ago(Math.round((now - t) / DAY))}); refresh was due ${iso(due)}`);
+          details.push(`Last KYC ${iso(t)} (${ago(Math.round((now - t) / DAY))}); refresh was due ${iso(due)}`);
         } else if (due - now <= DUE_SOON_DAYS * DAY) {
           dueSoon = true;
         }
@@ -112,7 +112,7 @@
           ? 'KYC status is blank (counted as completed because a date is set)' : 'KYC status is blank');
       }
       if (r._done && !dateRaw) issue('KYC status / date problem', 'KYC completed but no completion date');
-      if (dateRaw && !Number.isFinite(t)) issue('KYC status / date problem', `Completion date "${dateRaw}" is not a valid YYYY-MM-DD date`);
+      if (dateRaw && !Number.isFinite(t)) issue('KYC status / date problem', `Completion date "${dateRaw}" is not a recognised date (use YYYY-MM-DD)`);
       if (Number.isFinite(t) && t > now) issue('KYC status / date problem', `Completion date ${dateRaw} is in the future`);
       if (!r._done && dateRaw) issue('KYC status / date problem', `Status is "${raw.kyc_status || 'blank'}" but a completion date is set (${dateRaw})`);
       for (const [f, map] of Object.entries(canon)) {

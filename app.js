@@ -5,6 +5,9 @@
   // Number of most-recent completion quarters shown as their own slice; older ones fold into "Earlier".
   const RECENT_QUARTERS = 5;
   const NOT_DONE = 'Not completed';
+  // How to read ambiguous dates like 03/04/2026 (Excel often rewrites dates this way): 'MDY' or 'DMY'.
+  // Unambiguous dates (2026-03-04, 25/12/2026) are always read correctly. Best: keep dates as YYYY-MM-DD.
+  const DATE_ORDER = 'MDY';
 
   const state = {
     rows: [],
@@ -68,8 +71,28 @@
     return sum;
   };
 
+  // Returns a UTC midnight timestamp, or NaN. Accepts YYYY-MM-DD, YYYY/MM/DD, M/D/YYYY, D/M/YYYY (see DATE_ORDER).
+  function parseDate(str) {
+    const s = String(str ?? '').trim();
+    let y, m, d, x;
+    if ((x = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[ T].*)?$/.exec(s))) [y, m, d] = [+x[1], +x[2], +x[3]];
+    else if ((x = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2}|\d{4})(?: .*)?$/.exec(s))) {
+      const a = +x[1], b = +x[2];
+      y = x[3].length === 2 ? 2000 + +x[3] : +x[3];
+      [m, d] = a > 12 ? [b, a] : b > 12 ? [a, b] : DATE_ORDER === 'DMY' ? [b, a] : [a, b];
+    } else return NaN;
+    const t = Date.UTC(y, m - 1, d);
+    const c = new Date(t);
+    return c.getUTCMonth() === m - 1 && c.getUTCDate() === d ? t : NaN;
+  }
+  const todayUTC = () => { const n = new Date(); return Date.UTC(n.getFullYear(), n.getMonth(), n.getDate()); };
+
   // ---------- CSV ----------
-  function parseCSV(text) {
+  function parseCSV(input) {
+    const text = input.replace(/^\uFEFF/, ''); // Excel adds a byte-order mark to "CSV UTF-8"
+    // Some Excel locales save with ';' (or tabs) instead of ','; pick whichever the header line uses most.
+    const first = text.slice(0, text.search(/\r?\n|$/));
+    const sep = [',', ';', '\t'].map((c) => [c, first.split(c).length]).sort((a, b) => b[1] - a[1])[0][0];
     const out = []; let row = []; let f = ''; let q = false;
     for (let i = 0; i < text.length; i++) {
       const c = text[i];
@@ -77,7 +100,7 @@
         if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; }
         else f += c;
       } else if (c === '"') q = true;
-      else if (c === ',') { row.push(f); f = ''; }
+      else if (c === sep) { row.push(f); f = ''; }
       else if (c === '\n' || c === '\r') {
         if (c === '\r' && text[i + 1] === '\n') i++;
         row.push(f); f = ''; if (row.some((v) => v !== '')) out.push(row); row = [];
@@ -91,11 +114,12 @@
 
   function normalize(r) {
     const status = r.kyc_status || '';
-    const date = r.kyc_completed_date ? new Date(r.kyc_completed_date) : null;
-    const done = /^complete/i.test(status) || (!status && date && !isNaN(date));
+    const t = parseDate(r.kyc_completed_date);
+    const done = /^complete/i.test(status) || (!status && Number.isFinite(t));
     let qKey = null, qLabel = null;
     // A future date is a data error (flagged on the follow-up tab), so it doesn't create a quarter.
-    if (done && date && !isNaN(date) && date <= Date.now()) {
+    if (done && Number.isFinite(t) && t <= todayUTC()) {
+      const date = new Date(t);
       const y = date.getUTCFullYear(), q = Math.floor(date.getUTCMonth() / 3) + 1;
       qKey = y * 10 + q; qLabel = `Q${q} ${y}`;
     }
@@ -104,7 +128,7 @@
       region: r.region || 'Unassigned',
       team: r.team || 'Unassigned',
       annual_budget_usd: toNum(r.annual_budget_usd),
-      _done: !!done, _qKey: qKey, _qLabel: qLabel,
+      _done: !!done, _qKey: qKey, _qLabel: qLabel, _date: t,
       _raw: r, // values exactly as they appear in the sheet (used by data-quality checks)
     };
   }
@@ -339,7 +363,12 @@
 
   $('#file-input').addEventListener('change', async (e) => {
     const f = e.target.files[0];
-    if (f) load(await f.text(), f.name);
+    if (!f) return;
+    const text = await f.text();
+    // Remember it in this browser, so opening index.html directly shows it next time.
+    try { localStorage.setItem('kyc-csv', JSON.stringify({ name: f.name, text, at: new Date().toISOString() })); } catch (_) { /* too big or blocked */ }
+    load(text, f.name);
+    e.target.value = '';
   });
 
   function load(text, source) {
@@ -376,11 +405,28 @@
     get overview() { return { region: state.region, team: state.team }; },
     get products() { return state.products || []; },
     revOf,
-    esc, fmtInt, fmtMoney, fmtPct, prettyKey, showDetail, toNum, quarterOf, NOT_DONE,
+    esc, fmtInt, fmtMoney, fmtPct, prettyKey, showDetail, toNum, quarterOf, parseDate, todayUTC, NOT_DONE,
   };
 
-  fetch('data/clients.csv')
-    .then((r) => { if (!r.ok) throw new Error(r.status); return r.text(); })
-    .then((t) => load(t, 'data/clients.csv'))
-    .catch(() => { $('#data-source').textContent = 'Could not load data/clients.csv — use “Load CSV…” to pick a file.'; });
+  // Where the data comes from, in order:
+  //  1. data/clients.csv            when the page is served (start script / any web server)
+  //  2. the last CSV picked with "Load CSV…" in this browser
+  //  3. data/clients.js             built-in copy of the sample, so double-clicking index.html works
+  function fallback() {
+    let cached = null;
+    try { cached = JSON.parse(localStorage.getItem('kyc-csv') || 'null'); } catch (_) { /* ignore */ }
+    if (cached && cached.text) return load(cached.text, `${cached.name} (last file loaded in this browser)`);
+    if (window.KYC_SAMPLE_CSV) return load(window.KYC_SAMPLE_CSV, 'built-in sample data. Use “Load CSV…” to open data/clients.csv after editing it');
+    $('#data-source').textContent = 'No data found. Use “Load CSV…” to pick data/clients.csv.';
+  }
+  // Start once every tab's script has run, so they all receive the 'kyc:data' event
+  // (opened as a file, the fetch fails instantly, before later scripts would otherwise load).
+  function start() {
+    fetch('data/clients.csv', { cache: 'no-store' })
+      .then((r) => { if (!r.ok) throw new Error(r.status); return r.text(); })
+      .then((t) => load(t, 'data/clients.csv'))
+      .catch(fallback);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
 })();
